@@ -1,0 +1,56 @@
+name: Geo Windows build
+
+on:
+  push:
+    branches: [geo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o vulkan_sdk.exe https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/vulkan_sdk.exe
+          $p = Start-Process -FilePath .\vulkan_sdk.exe -NoNewWindow -Wait -PassThru `
+               -ArgumentList '--root','C:\VulkanSDK','--accept-licenses','--default-answer','--confirm-command','install'
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          "VULKAN_SDK=C:\VulkanSDK" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: cmd
+        env:
+          SS_SKIP_COMMENT_CHECK: "1"
+        run: build_develop.bat -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
+
+      - name: Smoke
+        shell: cmd
+        run: build_vulkan\spirula.exe train --help
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $sha = git rev-parse --short=7 HEAD
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build_vulkan\spirula.exe dist\spirula-geo.exe
+          Copy-Item LICENSE dist\LICENSE.txt
+          Copy-Item docs\geodesy.md dist\
+          Compress-Archive -Path dist\* -DestinationPath "spirula-geo-$sha-windows.zip"
+          "ASSET=spirula-geo-$sha-windows.zip" >> $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spirula-geo-windows
+          path: ${{ env.ASSET }}
+          retention-days: 30
