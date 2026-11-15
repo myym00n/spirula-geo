@@ -3,6 +3,8 @@
 // Lives beside the dataset as geo.json; docs/geodesy.md.
 #pragma once
 
+#include "core/Similarity.h"
+
 #include <map>
 #include <string>
 #include <vector>
@@ -37,6 +39,9 @@ struct GeoProject {
     // north, up) in the survey frame.
     bool placed = false;
     double offset[3] = {0, 0, 0};
+    // In a model's sidecar (<model>.geo.json): dataset -> the model file.
+    bool model_frame = false;
+    Sim3 file_from_dataset;
 
     GeoPoint* find(const std::string& name);
     const GeoPoint* find(const std::string& name) const;

@@ -9,6 +9,7 @@
 #include "app/gui/Ui.h"
 #include "app/gui/ViewportPanel.h"
 #include "app/gui/edit/EditSession.h"
+#include "app/gui/edit/GeoState.h"
 #include "core/ImageOrient.h"
 #include "data/DatasetParser.h"
 #include "data/GeoCrs.h"
@@ -31,54 +32,6 @@ namespace geo = spirula::geo;
 using spirula::Sim3;
 
 namespace gui {
-
-struct GeoState {
-    spirula::MarkerDataset md;
-    std::unique_ptr<ParsedDataset> own;
-    const ParsedDataset* ds = nullptr;          // set by the loader, read once it is done
-    std::vector<std::array<int, 2>> dims;       // per camera, file as displayed
-    std::thread loader;
-    std::atomic<bool> loading{false};
-    std::string load_error;
-
-    geo::GeoProject gp;
-    std::string path;
-    geo::Solution sol;
-    bool stale = true;
-    Sim3 solved_for;
-    std::string status;
-    bool status_err = false;
-    int sel = -1;
-
-    std::vector<geo::CrsEntry> user;
-    bool user_read = false;
-    geo::Crs crs;
-    bool crs_ok = false;
-    std::string filter, add_name, add_def, add_error;
-    bool add_open = false, latlon = false;
-
-    FileDialog dlg;
-    enum class Ask { None, Catalog, Mooncloud, Export, Prj } ask = Ask::None;
-
-    bool win = false;
-    std::string point;
-    int cam = -1;
-    bool only_visible = true;
-    Picture pic;
-    bool pic_ok = false;
-    int pic_want = -1, tex_cam = -1;
-    std::thread pic_worker;
-    std::atomic<bool> pic_busy{false};
-    PreviewTexture tex;
-    float zoom = 1.0f;
-    ImVec2 pan{0, 0};
-    bool recentre = true;
-
-    void join() {
-        if (loader.joinable()) loader.join();
-        if (pic_worker.joinable()) pic_worker.join();
-    }
-};
 
 namespace {
 
@@ -139,14 +92,30 @@ void EditSession::geo_open() {
     GeoState& g = *_geo;
     g.md = spirula::resolve_marker_dataset(_doc->source_path());
     if (_doc->dataset()) g.md.file_from_dataset = {};
-    if (g.md.directory.empty()) return;
-    g.path = geo::geo_path(g.md.directory);
+    // Without a dataset the model carries its offset and system in a sidecar,
+    // written when a placed model is saved.
+    g.path = g.md.directory.empty() ? _doc->source_path() + ".geo.json" : geo::geo_path(g.md.directory);
+    g.vec_path = geo::vectors_path(g.md.directory, _doc->source_path());
     std::string err;
     if (std::filesystem::exists(std::filesystem::u8path(g.path)) && !geo::load_geo(g.path, g.gp, err)) {
         g.status = spirula::i18n::format(gmsg::import_failed, {g.path, err});
         g.status_err = true;
     }
     if (!g.gp.crs_def.empty()) g.crs_ok = geo::parse_crs(g.gp.crs_def, g.crs, err);
+    if (std::filesystem::exists(std::filesystem::u8path(g.vec_path)) &&
+        !geo::load_vectors(g.vec_path, g.features, g.vec_survey, err)) {
+        g.status = spirula::i18n::format(gmsg::import_failed, {g.vec_path, err});
+        g.status_err = true;
+    }
+    geo_load_classifier_setting();
+    if (g.md.directory.empty()) return;
+    // A model saved after placement records where the dataset sits in it: the
+    // run's own scene_transform.json still describes the file before the move.
+    geo::GeoProject side;
+    const std::string side_path = _doc->source_path() + ".geo.json";
+    if (!_doc->dataset() && std::filesystem::exists(std::filesystem::u8path(side_path)) &&
+        geo::load_geo(side_path, side, err) && side.model_frame)
+        g.md.file_from_dataset = side.file_from_dataset;
 
     GeoState* gs = &g;
     const ParsedDataset* given = _doc->dataset();
@@ -239,9 +208,23 @@ void EditSession::geo_place() {
         _panel->set_level_cameras(false);
     }
     place_saved(g.sol.model_to_local, gmsg::op_place, /*carry=*/true);
+    // A drawing made before the first placement is in the model's own
+    // coordinates; it goes where the model went.
+    if (!g.vec_survey && !g.features.empty()) {
+        for (auto& f : g.features) {
+            for (auto& p : f.v) {
+                double saved[3], moved[3];
+                geo_saved(p, saved);
+                g.sol.model_to_local.apply(saved, moved);
+                p = {moved[1] + g.sol.offset[1], moved[0] + g.sol.offset[0], moved[2] + g.sol.offset[2]};
+            }
+        }
+    }
     g.gp.placed = true;
     std::copy(g.sol.offset, g.sol.offset + 3, g.gp.offset);
+    g.vec_survey = true;
     geo_save();
+    if (!g.features.empty()) geo_save_vectors();
     g.stale = true;
     geo_solve();
     g.status = spirula::i18n::format(gmsg::placed_control,
@@ -251,12 +234,14 @@ void EditSession::geo_place() {
     note(g.status);
 }
 
-void EditSession::enter_geo() {
+void EditSession::enter_geo(int tab) {
     if (!_doc) return;
     if (_tool.id() != ToolId::Transform && _tool.id() != ToolId::Navigate) _xform_return = _tool.id();
     _tool.set_id(ToolId::Navigate);
     _pick = Pick::None;
-    _tab = 2;
+    _tab = tab;
+    geo_open();
+    if (_geo) _geo->pts.clear();
 }
 
 void EditSession::geo_poll() {
@@ -458,6 +443,9 @@ void EditSession::geo_file_chosen(const std::string& path) {
             if (g.add_name.empty()) g.add_name = std::filesystem::u8path(path).stem().u8string();
             break;
         }
+        case GeoState::Ask::Classifier: geo_load_classifier(path); break;
+        case GeoState::Ask::Model: geo_export_model(path); break;
+        case GeoState::Ask::Drawings: geo_export_drawings(path); break;
         case GeoState::Ask::None: break;
     }
     g.ask = GeoState::Ask::None;

@@ -214,6 +214,8 @@ bool EditSession::on_viewport_input(const ViewportInput& in) {
         return true;
     }
 
+    if (_tab >= 3 && _tab <= 4 && _geo) return geo_input(in);
+
     if (_tool.id() == ToolId::Transform) {
         if (_dist_scale.active()) {
             spirula::Sim3 step;
@@ -272,6 +274,7 @@ void EditSession::draw_viewport_overlay(const ViewportOverlay& v) {
     const bool have = xform_frame(f);
     if (have && _marker_show && _tab == 1) draw_marker_overlay(v, f.cam);
     if (have && _tab == 2) draw_geo_overlay(v, f.cam);
+    if (have && _tab >= 3) draw_vector_overlay(v, f.cam);
     if (have && v.grid && draws_world_grid()) {
         float target[3] = {0, 0, 0};
         if (_panel) _panel->nav_target(target);
@@ -748,6 +751,7 @@ void EditSession::take_save_result() {
     const bool to_trainer = _train_after_save;
     _train_after_save = false;
     if (_save_error.empty()) {
+        geo_after_save(_save_path);
         if (_on_saved) _on_saved(_doc->source_path(), _save_path, _save_placement);
         _doc->mark_saved();
         if (_save_path == _doc->source_path() ||

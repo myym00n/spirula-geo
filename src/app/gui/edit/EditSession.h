@@ -17,8 +17,10 @@
 #include "app/gui/edit/ElementGrid.h"
 #include "app/gui/edit/SelectShape.h"
 #include "app/gui/edit/TransformTool.h"
+#include "data/GeoVectors.h"
 #include "data/MarkerScan.h"
 
+#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -116,7 +118,7 @@ public:
 
     bool owns_left_button() const override {
         return _tool.owns_pointer() || _xform.active() || _pick != Pick::None ||
-               _dist_scale.active();
+               _dist_scale.active() || geo_owns_left();
     }
     // The letter that switched tools is usually still down on the frame the
     // switch takes effect, so Q would both select Navigate and fly the camera
@@ -187,7 +189,7 @@ private:
     void draw_transform_tab(float full);
 
     // ---- the Reference tab: control points (EditGeo.cpp) ----
-    void enter_geo();
+    void enter_geo(int tab);
     void geo_open();
     void geo_close();
     void geo_poll();
@@ -202,6 +204,27 @@ private:
     void draw_geo_crs(float full);
     void draw_geo_marks();
     void draw_geo_overlay(const ViewportOverlay& v, const ViewProjection& camera);
+
+    // ---- Measure, Draw and Export tabs (EditMeasure.cpp) ----
+    bool geo_owns_left() const;
+    bool geo_input(const ViewportInput& in);
+    // Survey triples (x north, y east, h) <-> saved coordinates.
+    bool geo_pick(float x, float y, double xyh[3]);
+    std::array<double, 3> geo_survey(const double saved[3]) const;
+    void geo_saved(const std::array<double, 3>& xyh, double saved[3]) const;
+    void geo_keys();
+    void geo_finish();
+    void geo_commit(spirula::geo::FeatureKind kind, const std::vector<std::array<double, 3>>& pts);
+    void geo_save_vectors();
+    void geo_load_classifier(const std::string& path);
+    void geo_load_classifier_setting();
+    void geo_after_save(const std::string& saved);
+    void geo_export_model(const std::string& path);
+    void geo_export_drawings(const std::string& path);
+    void draw_measure_tab(float full);
+    void draw_draw_tab(float full);
+    void draw_export_tab(float full);
+    void draw_vector_overlay(const ViewportOverlay& v, const ViewProjection& camera);
     // shared_ptr: the type is complete only in EditGeo.cpp.
     std::shared_ptr<GeoState> _geo;
 
@@ -383,7 +406,7 @@ private:
     bool _adjust_live = false;
     double _preview_at = 0.0;
 
-    int _tab = 0;                     // 0 select, 1 transform, 2 reference
+    int _tab = 0;                     // 0 select, 1 transform, 2 reference, 3 measure, 4 draw, 5 export
     bool _tab_force = false;
     bool _saved_over_source = false;
 

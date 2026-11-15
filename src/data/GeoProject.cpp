@@ -151,6 +151,16 @@ bool load_geo(const std::string& path, GeoProject& out, std::string& error) {
             p.placed = true;
             for (int k = 0; k < 3; k++) p.offset[k] = o->arr[(size_t)k].as_double();
         }
+        if (const JsonValue* m = j.find("file_from_dataset"); m && m->is_object()) {
+            const JsonValue* R = m->find("R");
+            const JsonValue* t = m->find("t");
+            if (R && t && R->is_array() && t->is_array() && R->arr.size() == 9 && t->arr.size() == 3) {
+                p.model_frame = true;
+                p.file_from_dataset.s = m->get_double("s", 1.0);
+                for (int k = 0; k < 9; k++) p.file_from_dataset.R[k] = R->arr[(size_t)k].as_double();
+                for (int k = 0; k < 3; k++) p.file_from_dataset.t[k] = t->arr[(size_t)k].as_double();
+            }
+        }
         if (const JsonValue* pts = j.find("points"); pts && pts->is_array()) {
             for (const auto& v : pts->arr) {
                 GeoPoint g;
@@ -190,6 +200,18 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
     if (p.placed) {
         w.key("offset").array();
         for (int k = 0; k < 3; k++) w.raw(json_number_exact(p.offset[k]));
+        w.end();
+    }
+    if (p.model_frame) {
+        const Sim3& m = p.file_from_dataset;
+        w.key("file_from_dataset").object();
+        w.key("s").raw(json_number_exact(m.s));
+        w.key("R").array();
+        for (double v : m.R) w.raw(json_number_exact(v));
+        w.end();
+        w.key("t").array();
+        for (double v : m.t) w.raw(json_number_exact(v));
+        w.end();
         w.end();
     }
     w.key("points").array();

@@ -208,6 +208,22 @@ void EditSession::handle_keys() {
         return;
     }
 
+    // The Reference, Measure, Draw and Export tabs read Enter, Esc, Backspace
+    // and Del for their own figures; only undo, redo and save stay global.
+    if (_tab >= 2) {
+        for (const ActRow& r : kActs) {
+            if ((r.act != Act::Undo && r.act != Act::Redo) || !act_pressed(r, true)) continue;
+            if (r.act == Act::Undo) _doc->undo();
+            else _doc->redo();
+            break;
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+            _ask_overwrite = true;
+            _train_after_save = false;
+        }
+        return;
+    }
+
     // While Navigate is the active tool the camera owns WASDQE, so the keys
     // that collide with it are not read here. Every other key still is, which
     // is how a letter switches away from Navigate in the first place.
@@ -541,8 +557,23 @@ void EditSession::draw_panel() {
             ImGui::EndTabItem();
         }
         if (ui::BeginTabItem(gmsg::tab_geo, force && _tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            if (_tab != 2 && !force) enter_geo();
+            if (_tab != 2 && !force) enter_geo(2);
             draw_geo_tab(full);
+            ImGui::EndTabItem();
+        }
+        if (ui::BeginTabItem(gmsg::tab_measure, force && _tab == 3 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            if (_tab != 3 && !force) enter_geo(3);
+            draw_measure_tab(full);
+            ImGui::EndTabItem();
+        }
+        if (ui::BeginTabItem(gmsg::tab_draw, force && _tab == 4 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            if (_tab != 4 && !force) enter_geo(4);
+            draw_draw_tab(full);
+            ImGui::EndTabItem();
+        }
+        if (ui::BeginTabItem(gmsg::tab_export, force && _tab == 5 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            if (_tab != 5 && !force) enter_geo(5);
+            draw_export_tab(full);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

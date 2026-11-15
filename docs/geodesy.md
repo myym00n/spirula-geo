@@ -53,3 +53,45 @@ the built-in table knows. Supported: Transverse Mercator (`tmerc`, `utm`) and
 Lambert conformal conic (`lcc`), with a 3- or 7-parameter `towgs84` in PROJ's
 position-vector sense. No grid shifts and no geoid: heights pass through
 unchanged. Against PROJ the plan agrees to under a millimetre.
+
+## Measure, Draw, Export
+
+The editor's tabs are Select, Transform, Reference (control points and the
+placement), Measure, Draw and Export. The last three pick points on the model
+under the pointer: a splat centre, a cloud point or a mesh vertex.
+
+- Measure: coordinates under the pointer, distance (plan, slope, height
+  difference, grade) and area (plan area, perimeter). A measure can be kept
+  as a drawing.
+- Draw: points, lines and polygons with a code. Vertices snap to existing
+  ones; Enter or a double click finishes, Backspace takes the last vertex
+  back, Esc cancels, Del removes the selected feature.
+- Export: the model as LAS, PLY (double) or text points, or a mesh as OBJ,
+  in full coordinates; the drawing as DXF (R12, layers from the classifier),
+  CSV, GeoJSON or KML. A `.prj` is written beside when a system is chosen.
+
+The drawing is `vectors.json` beside `geo.json` (or `<model>.vectors.json`
+without a dataset). Its vertices are survey coordinates (x north, y east, h)
+once the model is placed, so moving or re-saving the model does not move the
+drawing. A drawing made before the first placement is carried along by it.
+
+### Classifier
+
+A file the user loads; the path is remembered in `geo_settings.json` in the
+config directory. CSV or text, one code per line:
+
+    code;name;kind;layer;colour
+    1;Pole;point;Poles;1
+    2;Kerb;line;Kerbs;#00ff00
+    3;Building;polygon;Buildings;5
+
+`kind` is point, line or polygon (Russian words work too); `colour` is an
+AutoCAD colour index or `#rrggbb`. A DXF can be loaded instead: each of its
+layers becomes a code with the layer's colour.
+
+### A placed model saved without its dataset
+
+Saving a placed model writes `<model>.geo.json` beside it: the offset, the
+coordinate system and, for a trained model, where the dataset sits in the
+saved file (the run's `scene_transform.json` still describes the file before
+the move). Opening the model reads it back.
