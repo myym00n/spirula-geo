@@ -30,7 +30,11 @@ struct GeoProject {
     std::vector<GeoPoint> points;
     // point name -> image file name (no directory) -> mark
     std::map<std::string, std::map<std::string, GeoMark>> marks;
-    std::string crs = "MSK";
+    std::string crs_name, crs_def;      // catalog entry; see GeoCrs.h
+    // Set once the model has been placed: saved coordinates + offset = (east,
+    // north, up) in the survey frame.
+    bool placed = false;
+    double offset[3] = {0, 0, 0};
 
     GeoPoint* find(const std::string& name);
     const GeoPoint* find(const std::string& name) const;
@@ -39,6 +43,8 @@ struct GeoProject {
 };
 
 std::string geo_path(const std::string& dataset_dir);
+bool read_text(const std::string& path, std::string& out, std::string& error);   // drops a BOM
+bool write_text(const std::string& path, const std::string& text, std::string& error);   // atomic
 bool load_geo(const std::string& path, GeoProject& out, std::string& error);
 bool save_geo(const std::string& path, const GeoProject& p, std::string& error);
 

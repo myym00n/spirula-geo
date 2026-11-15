@@ -56,17 +56,6 @@ Role role_from_key(const std::string& k) {
     return Role::Control;
 }
 
-std::string geo_path(const std::string& dataset_dir) {
-    return (fs::path(dataset_dir) / "geo.json").string();
-}
-
-namespace {
-
-std::string file_name(const std::string& path) {
-    const size_t k = path.find_last_of("/\\");
-    return k == std::string::npos ? path : path.substr(k + 1);
-}
-
 bool read_text(const std::string& path, std::string& out, std::string& error) {
     std::ifstream f(fs::u8path(path), std::ios::binary);
     if (!f) {
@@ -80,6 +69,43 @@ bool read_text(const std::string& path, std::string& out, std::string& error) {
         (unsigned char)out[2] == 0xBF)
         out.erase(0, 3);
     return true;
+}
+
+bool write_text(const std::string& path, const std::string& text, std::string& error) {
+    const fs::path dst = fs::u8path(path);
+    fs::path tmp = dst;
+    tmp += ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) {
+            error = "cannot write " + path;
+            return false;
+        }
+        f.write(text.data(), (std::streamsize)text.size());
+        f.close();
+        if (!f) {
+            error = "cannot write " + path;
+            return false;
+        }
+    }
+    try {
+        replace_file(tmp, dst);
+    } catch (const std::exception& e) {
+        error = e.what();
+        return false;
+    }
+    return true;
+}
+
+std::string geo_path(const std::string& dataset_dir) {
+    return (fs::path(dataset_dir) / "geo.json").string();
+}
+
+namespace {
+
+std::string file_name(const std::string& path) {
+    const size_t k = path.find_last_of("/\\");
+    return k == std::string::npos ? path : path.substr(k + 1);
 }
 
 bool parse_number(std::string s, double& v) {
@@ -118,7 +144,12 @@ bool load_geo(const std::string& path, GeoProject& out, std::string& error) {
     try {
         const JsonValue j = json_parse(text);
         GeoProject p;
-        if (const JsonValue* c = j.find("crs")) p.crs = c->as_string();
+        if (const JsonValue* c = j.find("crs")) p.crs_name = c->as_string();
+        if (const JsonValue* c = j.find("crs_def")) p.crs_def = c->as_string();
+        if (const JsonValue* o = j.find("offset"); o && o->is_array() && o->arr.size() == 3) {
+            p.placed = true;
+            for (int k = 0; k < 3; k++) p.offset[k] = o->arr[(size_t)k].as_double();
+        }
         if (const JsonValue* pts = j.find("points"); pts && pts->is_array()) {
             for (const auto& v : pts->arr) {
                 GeoPoint g;
@@ -153,7 +184,13 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
     JsonWriter w;
     w.object();
     w.key("version").value(1);
-    w.key("crs").value(p.crs);
+    w.key("crs").value(p.crs_name);
+    w.key("crs_def").value(p.crs_def);
+    if (p.placed) {
+        w.key("offset").array();
+        for (int k = 0; k < 3; k++) w.raw(json_number_exact(p.offset[k]));
+        w.end();
+    }
     w.key("points").array();
     for (const auto& g : p.points) {
         w.object();
@@ -180,30 +217,7 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
     }
     w.end();
     w.end();
-    const fs::path dst = fs::u8path(path);
-    fs::path tmp = dst;
-    tmp += ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) {
-            error = "cannot write " + path;
-            return false;
-        }
-        const std::string& s = w.str();
-        f.write(s.data(), (std::streamsize)s.size());
-        f.close();
-        if (!f) {
-            error = "cannot write " + path;
-            return false;
-        }
-    }
-    try {
-        replace_file(tmp, dst);
-    } catch (const std::exception& e) {
-        error = e.what();
-        return false;
-    }
-    return true;
+    return write_text(path, w.str(), error);
 }
 
 int import_catalog(const std::string& path, GeoProject& p, std::string& error) {
