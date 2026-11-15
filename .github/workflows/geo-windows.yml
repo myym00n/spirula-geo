@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: geo-${{ github.ref }}
+  group: geo-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,11 +28,22 @@ jobs:
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
           "VULKAN_SDK=C:\VulkanSDK" >> $env:GITHUB_ENV
 
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # Every run starts from a clean checkout; sccache keeps the compiled
+      # objects between runs, so only what a commit touched is rebuilt.
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Build
         shell: cmd
         env:
-          SS_SKIP_COMMENT_CHECK: "1"
-        run: build_develop.bat -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
+          SCCACHE_GHA_ENABLED: "true"
+        run: |
+          python tools\codegen\generate_headers.py
+          python tools\codegen\generate_kernel_instantiation.py
+          cmake -G Ninja -B build_vulkan -DCMAKE_BUILD_TYPE=Release -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON -DSS_CHECK_UI_TEXT=OFF -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache || exit /b 1
+          cmake --build build_vulkan --target spirula -j 4 || exit /b 1
+          sccache --show-stats
 
       - name: Smoke
         shell: cmd
