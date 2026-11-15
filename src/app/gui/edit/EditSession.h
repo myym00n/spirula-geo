@@ -29,6 +29,7 @@
 namespace gui {
 
 class ViewportPanel;
+struct GeoState;
 
 // What produced a selection. Kept on the history step it made, so a setting
 // changed at that point in the history re-runs THAT selection -- however many
@@ -184,6 +185,25 @@ private:
                                      std::vector<int64_t>* index = nullptr) const;
     void enter_transform();
     void draw_transform_tab(float full);
+
+    // ---- survey control (EditGeo.cpp) ----
+    void enter_geo();
+    void geo_open();
+    void geo_close();
+    void geo_poll();
+    void geo_save();
+    void geo_solve();
+    void geo_place();
+    void geo_pick_crs(const std::string& name, const std::string& def);
+    void geo_file_chosen(const std::string& path);
+    spirula::Sim3 geo_model_from_dataset() const;
+    bool geo_model_point(const std::string& name, double out[3]) const;
+    void draw_geo_tab(float full);
+    void draw_geo_crs(float full);
+    void draw_geo_marks();
+    void draw_geo_overlay(const ViewportOverlay& v, const ViewProjection& camera);
+    // shared_ptr: the type is complete only in EditGeo.cpp.
+    std::shared_ptr<GeoState> _geo;
 
     // ---- selecting by attribute and by colour (EditAttributes.cpp) ----
     void draw_attribute_section(float full);
@@ -363,7 +383,7 @@ private:
     bool _adjust_live = false;
     double _preview_at = 0.0;
 
-    int _tab = 0;                     // 0 select, 1 transform
+    int _tab = 0;                     // 0 select, 1 transform, 2 survey
     bool _tab_force = false;
     bool _saved_over_source = false;
 

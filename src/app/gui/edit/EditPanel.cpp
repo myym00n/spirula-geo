@@ -9,6 +9,7 @@
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditAttributes.h"
 #include "i18n/catalog/EditTransform.h"
+#include "i18n/catalog/Geo.h"
 #include "i18n/catalog/Marker.h"
 #include "i18n/catalog/Render.h"
 
@@ -25,6 +26,7 @@ namespace rmsg = spirula::i18n::msg::render;
 using spirula::i18n::Msg;
 
 namespace mmsg = spirula::i18n::msg::marker;
+namespace gmsg = spirula::i18n::msg::geo;
 
 namespace gui {
 
@@ -538,8 +540,14 @@ void EditSession::draw_panel() {
             draw_transform_tab(full);
             ImGui::EndTabItem();
         }
+        if (ui::BeginTabItem(gmsg::tab_geo, force && _tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            if (_tab != 2 && !force) enter_geo();
+            draw_geo_tab(full);
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
     }
+    draw_geo_marks();
 
     // ---- history ----
     ui::SeparatorText(msg::sec_history);

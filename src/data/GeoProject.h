@@ -10,6 +10,8 @@
 namespace spirula {
 namespace geo {
 
+struct Crs;
+
 enum class Role { Control = 0, Check, Off };
 
 struct GeoPoint {
@@ -50,7 +52,9 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error);
 
 // "name x y h [code]" per line; space, tab, ';' or ',' between fields, decimal
 // comma accepted when ';' or tab separates. Returns points added or updated.
-int import_catalog(const std::string& path, GeoProject& p, std::string& error);
+// With `latlon_into`, x y are WGS 84 latitude and longitude, converted into it.
+int import_catalog(const std::string& path, GeoProject& p, std::string& error,
+                   const Crs* latlon_into = nullptr);
 // gcps + observations from a mooncloud project.json.
 int import_mooncloud(const std::string& path, GeoProject& p, std::string& error);
 bool export_points_csv(const std::string& path,

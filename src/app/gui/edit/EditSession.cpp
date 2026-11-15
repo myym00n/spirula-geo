@@ -80,6 +80,7 @@ void EditSession::open(std::unique_ptr<EditDoc> doc, ViewportPanel* panel) {
 }
 
 void EditSession::close() {
+    geo_close();
     _cancel = true;
     if (_comp_worker.joinable()) _comp_worker.join();
     if (_save_worker.joinable()) _save_worker.join();
@@ -270,6 +271,7 @@ void EditSession::draw_viewport_overlay(const ViewportOverlay& v) {
     XformFrame f;
     const bool have = xform_frame(f);
     if (have && _marker_show && _tab == 1) draw_marker_overlay(v, f.cam);
+    if (have && _tab == 2) draw_geo_overlay(v, f.cam);
     if (have && v.grid && draws_world_grid()) {
         float target[3] = {0, 0, 0};
         if (_panel) _panel->nav_target(target);
@@ -638,6 +640,7 @@ void EditSession::poll() {
         _cancel = false;
     }
     if (!_save_busy.load() && _save_worker.joinable()) take_save_result();
+    geo_poll();
     if (!_marker_busy.load() && _marker_worker.joinable()) take_marker_result();
     if (busy()) {
         if (_panel) _panel->invalidate();

@@ -19,10 +19,9 @@ struct Crs {
     enum class Kind { Geographic, TransverseMercator, LambertConic };
     Kind kind = Kind::Geographic;
     double a = 6378137.0, f = 1.0 / 298.257223563;
-    double lat0 = 0, lon0 = 0, lat1 = 0, lat2 = 0;   // degrees
+    double lat0 = 0, lon0 = 0, lat1 = 0, lat2 = 0;   // degrees; lat1/2 LCC only
     double k0 = 1, x0 = 0, y0 = 0;                   // false easting, northing
     double to_meter = 1;
-    bool one_parallel = false;                       // LCC 1SP
     // PROJ +towgs84 order and sense (position vector): m, arcsec, ppm.
     double towgs84[7] = {0, 0, 0, 0, 0, 0, 0};
     std::string datum, ellipsoid;                    // names, for WKT out

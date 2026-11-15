@@ -1,6 +1,7 @@
 #include "data/GeoProject.h"
 
 #include "core/AtomicFile.h"
+#include "data/GeoCrs.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
 
@@ -220,7 +221,7 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
     return write_text(path, w.str(), error);
 }
 
-int import_catalog(const std::string& path, GeoProject& p, std::string& error) {
+int import_catalog(const std::string& path, GeoProject& p, std::string& error, const Crs* latlon_into) {
     std::string text;
     if (!read_text(path, text, error)) return -1;
     std::istringstream in(text);
@@ -234,6 +235,7 @@ int import_catalog(const std::string& path, GeoProject& p, std::string& error) {
         g.name = f[0];
         double x, y, h = 0;
         if (!parse_number(f[1], x) || !parse_number(f[2], y)) continue;   // header row
+        if (latlon_into) wgs84_to_crs(*latlon_into, x, y, x, y);
         g.x = x;
         g.y = y;
         g.has_h = f.size() >= 4 && parse_number(f[3], h);
