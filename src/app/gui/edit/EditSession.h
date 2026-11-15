@@ -186,7 +186,7 @@ private:
     void enter_transform();
     void draw_transform_tab(float full);
 
-    // ---- survey control (EditGeo.cpp) ----
+    // ---- the Reference tab: control points (EditGeo.cpp) ----
     void enter_geo();
     void geo_open();
     void geo_close();
@@ -383,7 +383,7 @@ private:
     bool _adjust_live = false;
     double _preview_at = 0.0;
 
-    int _tab = 0;                     // 0 select, 1 transform, 2 survey
+    int _tab = 0;                     // 0 select, 1 transform, 2 reference
     bool _tab_force = false;
     bool _saved_over_source = false;
 

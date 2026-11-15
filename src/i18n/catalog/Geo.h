@@ -1,6 +1,6 @@
 #pragma once
 
-// The editor's Survey tab: control points, photo marks, placement in survey
+// The editor's Reference tab: control points, photo marks, placement in survey
 // coordinates. English and Russian; the other languages show the English.
 
 #include "i18n/BeginCatalog.h"
@@ -11,34 +11,34 @@ namespace msg {
 namespace geo {
 
 SS_MSG(tab_geo,
-    EN("Survey"),
-    JA("Survey"),
-    ZH_HANS("Survey"),
-    ZH_HANT("Survey"),
-    KO("Survey"),
-    DE("Survey"),
-    FR("Survey"),
-    ES("Survey"),
-    PT("Survey"),
-    IT("Survey"),
-    NL("Survey"),
-    RU("Геодезия"),
-    TR("Survey"));
+    EN("Reference"),
+    JA("Reference"),
+    ZH_HANS("Reference"),
+    ZH_HANT("Reference"),
+    KO("Reference"),
+    DE("Reference"),
+    FR("Reference"),
+    ES("Reference"),
+    PT("Reference"),
+    IT("Reference"),
+    NL("Reference"),
+    RU("Привязка"),
+    TR("Reference"));
 
 SS_MSG(tab_geo_help,
-    EN("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    JA("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    ZH_HANS("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    ZH_HANT("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    KO("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    DE("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    FR("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    ES("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    PT("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    IT("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    NL("Control points, their marks on the photos, and the model placed in survey coordinates."),
-    RU("Опорные точки, их отметки на фото и привязка модели к системе координат."),
-    TR("Control points, their marks on the photos, and the model placed in survey coordinates."));
+    EN("Control points, their marks on the photos, and the model placed in their coordinates."),
+    JA("Control points, their marks on the photos, and the model placed in their coordinates."),
+    ZH_HANS("Control points, their marks on the photos, and the model placed in their coordinates."),
+    ZH_HANT("Control points, their marks on the photos, and the model placed in their coordinates."),
+    KO("Control points, their marks on the photos, and the model placed in their coordinates."),
+    DE("Control points, their marks on the photos, and the model placed in their coordinates."),
+    FR("Control points, their marks on the photos, and the model placed in their coordinates."),
+    ES("Control points, their marks on the photos, and the model placed in their coordinates."),
+    PT("Control points, their marks on the photos, and the model placed in their coordinates."),
+    IT("Control points, their marks on the photos, and the model placed in their coordinates."),
+    NL("Control points, their marks on the photos, and the model placed in their coordinates."),
+    RU("Опорные точки, их отметки на фото и привязка модели к их координатам."),
+    TR("Control points, their marks on the photos, and the model placed in their coordinates."));
 
 SS_MSG(no_dataset,
     EN("No cameras found for this model. Open a reconstruction or a trained run."),
@@ -671,19 +671,19 @@ SS_MSG(delete_point,
     TR("Delete point"));
 
 SS_MSG(sec_place,
-    EN("Placement"),
-    JA("Placement"),
-    ZH_HANS("Placement"),
-    ZH_HANT("Placement"),
-    KO("Placement"),
-    DE("Placement"),
-    FR("Placement"),
-    ES("Placement"),
-    PT("Placement"),
-    IT("Placement"),
-    NL("Placement"),
-    RU("Привязка"),
-    TR("Placement"));
+    EN("Fit"),
+    JA("Fit"),
+    ZH_HANS("Fit"),
+    ZH_HANT("Fit"),
+    KO("Fit"),
+    DE("Fit"),
+    FR("Fit"),
+    ES("Fit"),
+    PT("Fit"),
+    IT("Fit"),
+    NL("Fit"),
+    RU("Расчёт привязки"),
+    TR("Fit"));
 
 SS_MSG(place,
     EN("Place by control points"),

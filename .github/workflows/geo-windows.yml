@@ -57,6 +57,16 @@ jobs:
           Copy-Item build_vulkan\spirula.exe dist\spirula-geo.exe
           Copy-Item LICENSE dist\LICENSE.txt
           Copy-Item docs\geodesy.md dist\
+          # ffmpeg beside the exe: the fallback when the GPU cannot decode a
+          # video (iPhone HEVC on some drivers). Found first by SearchPath.
+          try {
+            curl.exe -fsSL -o ff.zip https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip
+            Expand-Archive ff.zip -DestinationPath ff
+            $bin = Get-ChildItem ff -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+            Copy-Item $bin.FullName dist\ffmpeg.exe
+            $lic = Get-ChildItem ff -Recurse -Filter LICENSE.txt | Select-Object -First 1
+            if ($lic) { Copy-Item $lic.FullName dist\ffmpeg-LICENSE.txt }
+          } catch { Write-Warning "ffmpeg not bundled: $_" }
           Compress-Archive -Path dist\* -DestinationPath "spirula-geo-$sha-windows.zip"
           "ASSET=spirula-geo-$sha-windows.zip" >> $env:GITHUB_ENV
 

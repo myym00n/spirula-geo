@@ -1,4 +1,4 @@
-// EditGeo.cpp -- the Survey tab: control points, their marks on the photos,
+// EditGeo.cpp -- the Reference tab: control points, their marks on the photos,
 // and the model placed in survey coordinates. Frames: docs/geodesy.md.
 
 #include "app/AppPaths.h"
