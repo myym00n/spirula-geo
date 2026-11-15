@@ -151,7 +151,8 @@ bool EditSession::geo_input(const ViewportInput& in) {
     if (in.clicked && g.hover_ok) {
         const std::array<double, 3> a{g.hover[0], g.hover[1], g.hover[2]};
         if (_tab == kMeasure) {
-            if (g.measure_kind == (int)geo::FeatureKind::Point) g.pts.clear();
+            if (g.measure_kind == (int)geo::FeatureKind::Point || g.measure_done) g.pts.clear();
+            g.measure_done = false;
             g.pts.push_back(a);
         } else {
             const geo::ClassCode* c = g.code >= 0 && g.code < (int)g.classes.size() ? &g.classes[(size_t)g.code] : nullptr;
@@ -181,6 +182,7 @@ void EditSession::geo_keys() {
 
 void EditSession::geo_finish() {
     GeoState& g = *_geo;
+    if (_tab == kMeasure) g.measure_done = true;
     if (_tab != kDraw) return;
     const geo::ClassCode* c = g.code >= 0 && g.code < (int)g.classes.size() ? &g.classes[(size_t)g.code] : nullptr;
     const auto kind = c ? c->kind : (geo::FeatureKind)g.draw_kind;

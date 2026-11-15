@@ -79,6 +79,7 @@ struct GeoState {
 
     // The figure under way: a measure in the Measure tab, a feature in Draw.
     int measure_kind = 1;                       // FeatureKind
+    bool measure_done = false;                  // the next click starts a new one
     std::vector<std::array<double, 3>> pts;
     bool hover_ok = false, snapped = false;
     double hover[3] = {0, 0, 0};
