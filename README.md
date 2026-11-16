@@ -15,9 +15,9 @@
 
 </div>
 
-**spirula-geo** is a fork of Spirula Studio with survey tools in the editor: control points and placement in survey coordinates, measuring, drawing, and export to CAD/GIS (DXF, LAS, OBJ, GeoJSON, KML). Everything else is Spirula Studio as described below. [Fork builds](https://github.com/myym00n/spirula-geo/releases) &#8226; [Details](docs/geodesy.md)
+**spirula-geo** is a fork of Spirula Studio with survey tools in the editor: control points and placement in survey coordinates, measuring, drawing, and export to CAD/GIS (DXF, LAS, OBJ, GeoJSON, KML). Everything else is Spirula Studio as described below. [Fork builds](https://github.com/myym00n/spirula-geo/releases) &#8226; [More below](#spirula-geo-fork)
 
-**spirula-geo** &ndash; форк Spirula Studio с инструментами геодезии в редакторе: опорные точки и привязка к системе координат, измерения, рисование и экспорт в CAD/ГИС (DXF, LAS, OBJ, GeoJSON, KML). Всё остальное &ndash; Spirula Studio, как описано ниже. [Сборки форка](https://github.com/myym00n/spirula-geo/releases) &#8226; [Подробнее](docs/geodesy.md)
+**spirula-geo** &ndash; форк Spirula Studio с инструментами геодезии в редакторе: опорные точки и привязка к системе координат, измерения, рисование и экспорт в CAD/ГИС (DXF, LAS, OBJ, GeoJSON, KML). Всё остальное &ndash; Spirula Studio, как описано ниже. [Сборки форка](https://github.com/myym00n/spirula-geo/releases) &#8226; [Подробнее ниже](#форк-spirula-geo)
 
 Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video to splat to textured mesh &ndash; in one self-contained binary. No Python/PyTorch, no separate COLMAP install. Runs on NVIDIA, AMD, Intel, and Apple GPUs via Vulkan, trains 10M full-SH Gaussians in 8 GB VRAM, and has native support for fisheye and 360° cameras.
 
@@ -181,3 +181,77 @@ Spirula Studio (formerly spirulae-splat) is named after the now-inactive project
 Spirula Studio is maintained almost entirely by one person. Issues and PRs welcome &ndash; I sometimes respond late, but rest assured that I do review them all.
 
 <!-- If you want to sponsor Spirula Studio, you may use [GitHub sponsor](https://github.com/sponsors/harry7557558) for voluntary donation. For custom arrangements, please reach out to me. -->
+
+## spirula-geo fork
+
+**English** &#8226; [Русский](#форк-spirula-geo)
+
+spirula-geo adds survey tools to the Spirula Studio editor &ndash; from photos with control points to a placed model, measurements and a CAD/GIS drawing &ndash; while training, SfM, meshing and the rest of the app stay as above. Windows builds are on the fork's [Releases page](https://github.com/myym00n/spirula-geo/releases); file formats and frames are described in [docs/geodesy.md](docs/geodesy.md).
+
+### Features
+
+- **Reference tab** &ndash; Import a control point catalog (text/CSV, optionally WGS 84 latitude/longitude, or a mooncloud project) and mark the points on the photos, with the predicted position shown once the model is placed
+
+- **Placement with residuals** &ndash; One similarity fit on control points; plan and height residuals and RMS for control and check points, and the worst photo mark of each point
+
+- **Coordinate systems** &ndash; Built-in catalog (MSK-52 zone 2, Pulkovo 1942 Gauss-Kruger, UTM...) and your own as a PROJ string, WKT/.prj or EPSG code; Transverse Mercator and Lambert conic, agreeing with PROJ to under a millimetre
+
+- **Measure tab** &ndash; Coordinates under the pointer, distance (plan, slope, height difference, grade) and area on the model
+
+- **Draw tab** &ndash; Points, lines and polygons with codes from a classifier you load (CSV or the layers of a DXF), snapping to existing vertices and numbering points by itself
+
+- **Export tab** &ndash; The model as LAS, PLY or text points, or an OBJ mesh, in full coordinates; points and lines as DXF, CSV, GeoJSON or KML, with a .prj beside
+
+- Survey coordinates kept in double precision &ndash; The model is stored minus a rounded offset so float32 still holds millimetres; every export adds it back
+
+- The fork's panels are in English and Russian; other interface languages show them in English. No built-in personal data: the classifier and the coordinate system are the user's own choice.
+
+### News
+
+- **November 16, 2026: Measure, Draw and Export tabs** &ndash; Measuring on the model, drawing with classifier codes, and export of the model and the drawing in full survey coordinates.
+
+- **November 15, 2026: Reference tab** &ndash; Control points, photo marks, placement in survey coordinates with residuals, and a catalog of coordinate systems.
+
+### Planned
+
+- Accuracy report with residuals (HTML/PDF)
+- Profiles, surfaces, contours and volumes
+- DEM and orthophoto with georeferencing
+- Camera refinement on control points
+
+## Форк spirula-geo
+
+[English](#spirula-geo-fork) &#8226; **Русский**
+
+spirula-geo добавляет в редактор Spirula Studio инструменты для геодезии &ndash; от фотографий с опорными точками до привязанной модели, измерений и чертежа для CAD/ГИС &ndash; а обучение, SfM, построение сетки и остальная программа остаются такими, как описано выше. Сборки для Windows &ndash; на [странице релизов](https://github.com/myym00n/spirula-geo/releases) форка; форматы файлов и системы координат описаны в [docs/geodesy.md](docs/geodesy.md).
+
+### Возможности
+
+- **Вкладка «Привязка»** &ndash; Импорт каталога опорных точек (текст/CSV, по желанию в широте и долготе WGS 84, или проект mooncloud) и отметки точек на фото; после привязки программа показывает, где точка должна быть
+
+- **Привязка с невязками** &ndash; Подобие по опорным точкам; невязки и СКО в плане и по высоте для опорных и контрольных точек, худшая отметка каждой точки на фото
+
+- **Системы координат** &ndash; Встроенный каталог (МСК-52 зона 2, СК-42 Гаусса-Крюгера, UTM...) и свои системы строкой PROJ, WKT/.prj или кодом EPSG; поперечный Меркатор и коническая проекция Ламберта, расхождение с PROJ меньше миллиметра
+
+- **Вкладка «Измерения»** &ndash; Координаты под курсором, расстояние (в плане, наклонное, превышение, уклон) и площадь по модели
+
+- **Вкладка «Рисование»** &ndash; Точки, линии и полигоны с кодами из загружаемого классификатора (CSV или слои DXF), с привязкой к существующим вершинам и автонумерацией точек
+
+- **Вкладка «Экспорт»** &ndash; Модель в LAS, PLY или текстовые точки, сетка в OBJ, в полных координатах; точки и линии в DXF, CSV, GeoJSON или KML, с файлом .prj рядом
+
+- Координаты с двойной точностью &ndash; Модель хранится со сдвигом, округлённым до 100 м, чтобы float32 держал миллиметры; любой экспорт прибавляет сдвиг обратно
+
+- Панели форка на английском и русском; в остальных языках интерфейса они показываются на английском. Никаких встроенных личных данных: классификатор и система координат выбираются пользователем.
+
+### Новости
+
+- **16 ноября 2026: вкладки «Измерения», «Рисование» и «Экспорт»** &ndash; Измерения по модели, рисование по кодам классификатора, экспорт модели и рисунка в полных координатах.
+
+- **15 ноября 2026: вкладка «Привязка»** &ndash; Опорные точки, отметки на фото, привязка с невязками и каталог систем координат.
+
+### В планах
+
+- Отчёт точности с невязками (HTML/PDF)
+- Профили, поверхности, горизонтали и объёмы
+- Матрица высот и ортофотоплан с привязкой
+- Уточнение камер по опорным точкам
