@@ -3,6 +3,7 @@ name: Geo Windows build
 on:
   push:
     branches: [geo]
+    paths-ignore: [README.md]
   workflow_dispatch:
 
 permissions:
