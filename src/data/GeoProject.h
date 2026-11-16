@@ -14,7 +14,8 @@ namespace geo {
 
 struct Crs;
 
-enum class Role { Control = 0, Check, Off };
+// Measure: no catalog coordinates; the point is found from its photo marks.
+enum class Role { Control = 0, Check, Off, Measure };
 
 struct GeoPoint {
     std::string name;
@@ -38,8 +39,10 @@ struct GeoProject {
     // Set once the model has been placed: saved coordinates + offset = (east,
     // north, up) in the survey frame.
     bool placed = false;
+    bool local = false;                 // the offset was typed, not fitted
     double offset[3] = {0, 0, 0};
     // In a model's sidecar (<model>.geo.json): dataset -> the model file.
+    std::string dataset_dir;            // chosen by hand when it is not found
     bool model_frame = false;
     Sim3 file_from_dataset;
 
@@ -60,6 +63,8 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error);
 // With `latlon_into`, x y are WGS 84 latitude and longitude, converted into it.
 int import_catalog(const std::string& path, GeoProject& p, std::string& error,
                    const Crs* latlon_into = nullptr);
+int import_catalog_text(const std::string& text, GeoProject& p, std::string& error,
+                        const Crs* latlon_into = nullptr);
 // gcps + observations from a mooncloud project.json.
 int import_mooncloud(const std::string& path, GeoProject& p, std::string& error);
 bool export_points_csv(const std::string& path,

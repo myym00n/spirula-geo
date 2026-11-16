@@ -45,6 +45,7 @@ const char* role_key(Role r) {
     switch (r) {
         case Role::Check: return "check";
         case Role::Off: return "off";
+        case Role::Measure: return "measure";
         default: return "control";
     }
 }
@@ -53,6 +54,7 @@ Role role_from_key(const std::string& k) {
     // mooncloud writes the Russian words
     if (k == "check" || k == "\xD0\xBA\xD0\xBE\xD0\xBD\xD1\x82\xD1\x80\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xB0\xD1\x8F")
         return Role::Check;
+    if (k == "measure") return Role::Measure;
     if (k == "off" || k == "\xD0\xB2\xD1\x8B\xD0\xBA\xD0\xBB") return Role::Off;
     return Role::Control;
 }
@@ -151,6 +153,7 @@ bool load_geo(const std::string& path, GeoProject& out, std::string& error) {
             p.placed = true;
             for (int k = 0; k < 3; k++) p.offset[k] = o->arr[(size_t)k].as_double();
         }
+        if (const JsonValue* d = j.find("dataset_dir")) p.dataset_dir = d->as_string();
         if (const JsonValue* m = j.find("file_from_dataset"); m && m->is_object()) {
             const JsonValue* R = m->find("R");
             const JsonValue* t = m->find("t");
@@ -201,7 +204,9 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
         w.key("offset").array();
         for (int k = 0; k < 3; k++) w.raw(json_number_exact(p.offset[k]));
         w.end();
+        if (p.local) w.key("local").value(true);
     }
+    if (!p.dataset_dir.empty()) w.key("dataset_dir").value(p.dataset_dir);
     if (p.model_frame) {
         const Sim3& m = p.file_from_dataset;
         w.key("file_from_dataset").object();
@@ -246,6 +251,10 @@ bool save_geo(const std::string& path, const GeoProject& p, std::string& error) 
 int import_catalog(const std::string& path, GeoProject& p, std::string& error, const Crs* latlon_into) {
     std::string text;
     if (!read_text(path, text, error)) return -1;
+    return import_catalog_text(text, p, error, latlon_into);
+}
+
+int import_catalog_text(const std::string& text, GeoProject& p, std::string& error, const Crs* latlon_into) {
     std::istringstream in(text);
     std::string line;
     int n = 0;

@@ -147,7 +147,13 @@ void SurveySession::take_pick() {
     if (g.click != GeoState::Click::Act) return;
     g.click = GeoState::Click::None;
     if (!ok) return;
-    const std::array<double, 3> a{xyh[0], xyh[1], xyh[2]};
+    tool_click({xyh[0], xyh[1], xyh[2]});
+}
+
+// What a click at a survey point does with the tool in hand; the 3D view and
+// the plan both end here.
+void SurveySession::tool_click(const std::array<double, 3>& a) {
+    GeoState& g = *_geo;
     if (_tool == Tool::Measure) {
         if (g.measure_kind == (int)geo::FeatureKind::Point || g.measure_done) g.pts.clear();
         g.measure_done = false;
@@ -163,6 +169,22 @@ void SurveySession::take_pick() {
             g.move_dirty = true;
         }
     }
+}
+
+// Move: take this vertex in hand, asking first if another is unconfirmed.
+void SurveySession::move_take(int f, int v) {
+    GeoState& g = *_geo;
+    if (f == g.move_feat && v == g.move_vtx) return;
+    if (g.move_dirty) {
+        g.move_ask = true;
+        g.move_next_feat = f;
+        g.move_next_vtx = v;
+        return;
+    }
+    g.move_feat = f;
+    g.move_vtx = v;
+    g.move_orig = g.features[(size_t)f].v[(size_t)v];
+    g.feat_sel = f;
 }
 
 // The drawn vertex nearest the pointer within ten pixels.
@@ -243,17 +265,7 @@ bool SurveySession::on_viewport_input(const ViewportInput& in) {
         int f, v;
         double xyh[3];
         if (vertex_at(in.x, in.y, f, v, xyh) && f >= 0) {
-            if (g.move_dirty && (f != g.move_feat || v != g.move_vtx)) {
-                g.move_ask = true;
-                g.move_next_feat = f;
-                g.move_next_vtx = v;
-            } else if (f != g.move_feat || v != g.move_vtx) {
-                g.move_feat = f;
-                g.move_vtx = v;
-                g.move_orig = g.features[(size_t)f].v[(size_t)v];
-                g.move_dirty = false;
-                g.feat_sel = f;
-            }
+            move_take(f, v);
             return true;
         }
     }
@@ -363,6 +375,7 @@ void SurveySession::draw_modals() {
     if (!_geo) return;
     GeoState& g = *_geo;
     if (g.dlg.draw() && !g.dlg.result().empty()) geo_file_chosen(g.dlg.result());
+    draw_pickets_modal();
     if (g.move_ask) {
         g.move_ask = false;
         ui::OpenPopup(gmsg::move_title);
@@ -549,10 +562,8 @@ void SurveySession::draw_code_picker(float full) {
     ui::help_on_hover(gmsg::next_name_help);
 }
 
-void SurveySession::draw_plan_panel(float full) {
+void SurveySession::draw_feature_list(float full) {
     GeoState& g = *_geo;
-    if (!g.gp.placed) ui::TextColoredWrapped(ImVec4(1, 0.7f, 0.3f, 1), gmsg::not_placed);
-    draw_code_picker(full);
     ui::Text(gmsg::drawn, {(long long)g.features.size()});
     if (!g.features.empty()) {
         const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
@@ -620,6 +631,46 @@ void SurveySession::draw_move_panel(float full) {
     if (ui::Button(gmsg::done, ImVec2(half, 0))) move_confirm();
     ImGui::SameLine();
     if (ui::Button(gmsg::cancel, ImVec2(half, 0))) move_cancel();
+}
+
+// No control points: the point last read gets the coordinates typed here and
+// everything drawn follows. Only the offset changes; the model does not move.
+void SurveySession::draw_local_system(float full) {
+    GeoState& g = *_geo;
+    if (g.sol.ok || (g.gp.placed && !g.gp.local)) return;
+    ui::SeparatorText(gmsg::local_title);
+    ui::TextDisabledWrapped(gmsg::local_help);
+    ImGui::BeginDisabled(!g.readout_ok);
+    static const char* ids[3] = {"X##geolocal", "Y##geolocal", "H##geolocal"};
+    for (int k = 0; k < 3; k++) {
+        ImGui::SetNextItemWidth(full * 0.7f);
+        ui::InputDoubleRaw(ids[k], &g.local_xyh[k], 0.0, 0.0, "%.3f");
+    }
+    if (ui::Button(gmsg::local_apply, ImVec2(full, 0))) {
+        double saved[3];
+        geo_saved({g.readout[0], g.readout[1], g.readout[2]}, saved);
+        const double now[3] = {g.local_xyh[1] - saved[0], g.local_xyh[0] - saved[1], g.local_xyh[2] - saved[2]};
+        double d[3];
+        for (int k = 0; k < 3; k++) d[k] = now[k] - (g.gp.placed ? g.gp.offset[k] : 0.0);
+        auto shift = [&](std::array<double, 3>& v) {
+            v[0] += d[1];
+            v[1] += d[0];
+            v[2] += d[2];
+        };
+        for (auto& f : g.features)
+            for (auto& v : f.v) shift(v);
+        for (auto& v : g.pts) shift(v);
+        std::copy(now, now + 3, g.gp.offset);
+        std::copy(g.local_xyh, g.local_xyh + 3, g.readout);
+        g.gp.placed = g.gp.local = true;
+        g.vec_survey = true;
+        g.plan_count = -1;
+        geo_save();
+        geo_save_vectors();
+        g.status = gmsg::local_done.get();
+        g.status_err = false;
+    }
+    ImGui::EndDisabled();
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <regex>
+#include <cwctype>
 #include <sstream>
 
 namespace spirula {
@@ -779,6 +781,255 @@ double plan_area(const std::vector<std::array<double, 3>>& v) {
         s += (a[0] - x0) * (b[1] - y0) - (b[0] - x0) * (a[1] - y0);
     }
     return std::fabs(s) * 0.5;
+}
+
+// ---- pickets of a DXF sketch ----
+
+std::string utf8_guess(const std::string& s) { return utf8_of(code_points(s)); }
+
+namespace {
+
+// Also undoes DXF's \U+XXXX escapes.
+std::wstring wide_of(const std::string& s) {
+    std::wstring w;
+    for (uint32_t c : code_points(s)) w += (wchar_t)(c < 0xFFFF ? c : L'?');
+    std::wstring o;
+    for (size_t i = 0; i < w.size(); i++) {
+        if (w[i] == L'\\' && i + 6 < w.size() && w[i + 1] == L'U' && w[i + 2] == L'+') {
+            const unsigned long v = std::wcstoul(w.substr(i + 3, 4).c_str(), nullptr, 16);
+            if (v) {
+                o += (wchar_t)v;
+                i += 6;
+                continue;
+            }
+        }
+        o += w[i];
+    }
+    return o;
+}
+
+std::string narrow_of(const std::wstring& w) {
+    std::vector<uint32_t> c(w.begin(), w.end());
+    return utf8_of(c);
+}
+
+std::wstring trimmed(std::wstring s) {
+    while (!s.empty() && iswspace(s.back())) s.pop_back();
+    size_t k = 0;
+    while (k < s.size() && iswspace(s[k])) k++;
+    return s.substr(k);
+}
+
+// The labels beside a point -> name, height, code: "pt5(Stairs)" is a name
+// and a code, "(pole)" a code, "153,64" a height; coordinates are skipped.
+void classify_labels(const std::vector<std::wstring>& texts, std::string& name, std::string& code, double& h,
+                     bool& has_h) {
+    static const std::wregex height(L"^[+-]?\\d{1,4}[.,]\\d{1,3}$");
+    static const std::wregex number(L"^[A-Za-z\\u0400-\\u04FF]{0,4}[-_.]?\\d{1,6}[A-Za-z\\u0400-\\u04FF]?$");
+    static const std::wregex coords(L"^[+-]?\\d{4,}(?:[.,]\\d+)?[\\s;,]+[+-]?\\d{4,}(?:[.,]\\d+)?$");
+    static const std::wregex name_code(L"^\\s*([^()\\s][^()]*?)\\s*\\(([^()]+)\\)\\s*$");
+    static const std::wregex any(L"[0-9A-Za-z\\u0400-\\u04FF]");
+    static const std::wregex letter(L"[A-Za-z\\u0400-\\u04FF]");
+    std::wstring wname, wcode;
+    for (const auto& t : texts) {
+        const std::wstring s = trimmed(t);
+        if (s.empty() || !std::regex_search(s, any) || std::regex_match(s, coords)) continue;
+        std::wsmatch m;
+        if (s.front() == L'(' && s.back() == L')') {
+            if (wcode.empty()) wcode = trimmed(s.substr(1, s.size() - 2));
+        } else if (std::regex_match(s, m, name_code) && !std::regex_match(m[1].str(), height)) {
+            if (wname.empty()) wname = trimmed(m[1].str());
+            if (wcode.empty()) wcode = trimmed(m[2].str());
+        } else if (std::regex_match(s, height)) {
+            if (!has_h) {
+                std::wstring v = s;
+                std::replace(v.begin(), v.end(), L',', L'.');
+                h = std::wcstod(v.c_str(), nullptr);
+                has_h = true;
+            }
+        } else if (std::regex_match(s, number) && wname.empty()) {
+            wname = s;
+        } else if (std::regex_search(s, letter)) {
+            if (wcode.empty()) wcode = s;
+        } else if (wname.empty()) {
+            wname = s;
+        }
+    }
+    name = narrow_of(wname);
+    code = narrow_of(wcode);
+}
+
+// MTEXT without its formatting codes.
+std::wstring mtext_plain(const std::wstring& s) {
+    std::wstring o;
+    for (size_t i = 0; i < s.size(); i++) {
+        if (s[i] == L'\\' && i + 1 < s.size()) {
+            const wchar_t c = s[i + 1];
+            if (c == L'P' || c == L'~') {
+                o += L' ';
+                i++;
+            } else if (c == L'\\' || c == L'{' || c == L'}') {
+                o += c;
+                i++;
+            } else {
+                const size_t semi = s.find(L';', i);
+                if (semi == std::wstring::npos || semi - i > 40) i++;
+                else i = semi;
+            }
+        } else if (s[i] != L'{' && s[i] != L'}') {
+            o += s[i];
+        }
+    }
+    return o;
+}
+
+}  // namespace
+
+bool read_dxf_pickets(const std::string& path, std::vector<Picket>& out, std::string& error) {
+    std::string text;
+    if (!read_text(path, text, error)) return false;
+    struct Ent {
+        std::string type, layer;
+        std::wstring text;
+        double p[3] = {0, 0, 0}, a[2] = {0, 0}, height = 0;
+        bool has_a = false, aligned = false, attribs = false;
+    };
+    std::vector<Ent> ents;
+    {
+        std::istringstream in(text);
+        std::string code, value;
+        bool in_entities = false, section_name = false;
+        Ent cur;
+        bool open = false;
+        auto flush = [&] {
+            if (open) ents.push_back(cur);
+            open = false;
+            cur = Ent{};
+        };
+        while (std::getline(in, code) && std::getline(in, value)) {
+            while (!value.empty() && (value.back() == '\r' || value.back() == ' ')) value.pop_back();
+            const int g = std::atoi(code.c_str());
+            if (g == 0) {
+                flush();
+                section_name = value == "SECTION";
+                if (value == "ENDSEC") in_entities = false;
+                if (in_entities) {
+                    cur.type = value;
+                    open = true;
+                }
+                continue;
+            }
+            if (section_name && g == 2) {
+                in_entities = value == "ENTITIES";
+                section_name = false;
+                continue;
+            }
+            if (!open) continue;
+            const double v = std::atof(value.c_str());
+            switch (g) {
+                case 8: cur.layer = narrow_of(wide_of(value)); break;
+                case 1: cur.text += wide_of(value); break;
+                case 3:
+                    if (cur.type == "MTEXT") cur.text += wide_of(value);
+                    break;
+                case 10: cur.p[0] = v; break;
+                case 20: cur.p[1] = v; break;
+                case 30: cur.p[2] = v; break;
+                case 11:
+                    cur.a[0] = v;
+                    cur.has_a = true;
+                    break;
+                case 21: cur.a[1] = v; break;
+                case 40: cur.height = v; break;
+                case 66: cur.attribs = v != 0; break;
+                case 72:
+                case 73:
+                    if (v != 0) cur.aligned = true;
+                    break;
+                default: break;
+            }
+        }
+        flush();
+    }
+
+    struct Pt {
+        double e, n, z;
+        std::string layer;
+        std::vector<std::pair<double, std::wstring>> labels;
+    };
+    std::vector<Pt> pts;
+    std::vector<Picket> found;
+    std::vector<std::array<double, 2>> label_at;
+    std::vector<std::wstring> label_text;
+    std::vector<double> heights;
+    for (size_t i = 0; i < ents.size(); i++) {
+        const Ent& e = ents[i];
+        if (e.type == "POINT") {
+            pts.push_back({e.p[0], e.p[1], e.p[2], e.layer, {}});
+        } else if (e.type == "INSERT" && e.attribs) {
+            std::vector<std::wstring> attrs;
+            for (size_t k = i + 1; k < ents.size() && ents[k].type == "ATTRIB"; k++) attrs.push_back(ents[k].text);
+            if (attrs.empty()) continue;
+            Picket p;
+            classify_labels(attrs, p.name, p.code, p.h, p.has_h);
+            if (!p.has_h && std::fabs(e.p[2]) > 1e-6) {
+                p.h = e.p[2];
+                p.has_h = true;
+            }
+            p.x = e.p[1];
+            p.y = e.p[0];
+            p.layer = e.layer;
+            found.push_back(p);
+        } else if (e.type == "TEXT" || e.type == "MTEXT") {
+            const std::wstring t = trimmed(e.type == "MTEXT" ? mtext_plain(e.text) : e.text);
+            if (t.empty()) continue;
+            const bool use_a = e.type == "TEXT" && e.aligned && e.has_a;
+            label_at.push_back({use_a ? e.a[0] : e.p[0], use_a ? e.a[1] : e.p[1]});
+            label_text.push_back(t);
+            if (e.height > 0) heights.push_back(e.height);
+        }
+    }
+    if (!pts.empty()) {
+        double th = 1.0;
+        if (!heights.empty()) {
+            std::nth_element(heights.begin(), heights.begin() + heights.size() / 2, heights.end());
+            th = heights[heights.size() / 2];
+        }
+        const double reach = std::max(4 * th, 1.0);
+        for (size_t t = 0; t < label_at.size(); t++) {
+            double best = reach;
+            int at = -1;
+            for (size_t k = 0; k < pts.size(); k++) {
+                const double d = std::hypot(pts[k].e - label_at[t][0], pts[k].n - label_at[t][1]);
+                if (d <= best) {
+                    best = d;
+                    at = (int)k;
+                }
+            }
+            if (at >= 0) pts[(size_t)at].labels.push_back({best, label_text[t]});
+        }
+        for (auto& q : pts) {
+            std::sort(q.labels.begin(), q.labels.end());
+            std::vector<std::wstring> texts;
+            for (const auto& l : q.labels) texts.push_back(l.second);
+            Picket p;
+            classify_labels(texts, p.name, p.code, p.h, p.has_h);
+            if (std::fabs(q.z) > 1e-6) {
+                p.h = q.z;
+                p.has_h = true;
+            }
+            p.x = q.n;
+            p.y = q.e;
+            p.layer = q.layer;
+            found.push_back(p);
+        }
+    }
+    if (found.empty()) {
+        error = "no POINT entities or blocks with attributes in " + path;
+        return false;
+    }
+    out = std::move(found);
+    return true;
 }
 
 }  // namespace geo

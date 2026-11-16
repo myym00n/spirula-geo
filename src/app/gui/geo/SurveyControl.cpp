@@ -1,5 +1,5 @@
-// EditGeo.cpp -- the Reference tab: control points, their marks on the photos,
-// and the model placed in survey coordinates. Frames: docs/geodesy.md.
+// SurveyControl.cpp -- control points, their marks on the photos, and the
+// model placed in survey coordinates. Frames: docs/geodesy.md.
 
 #include "app/AppPaths.h"
 #include "app/gui/FileDialog.h"
@@ -93,11 +93,27 @@ void SurveySession::geo_open() {
     GeoState& g = *_geo;
     g.md = spirula::resolve_marker_dataset(_e._doc->source_path());
     if (_e._doc->dataset()) g.md.file_from_dataset = {};
+    std::string err;
+    // Not found beside the model: the folder the user pointed at, if any.
+    if (g.md.directory.empty()) {
+        geo::GeoProject side;
+        const std::string sp = _e._doc->source_path() + ".geo.json";
+        if (std::filesystem::exists(std::filesystem::u8path(sp)) && geo::load_geo(sp, side, err) &&
+            !side.dataset_dir.empty()) {
+            g.md = spirula::resolve_marker_dataset(side.dataset_dir);
+            g.dataset_by_hand = side.dataset_dir;
+            // Points typed before the folder was known move to its geo.json.
+            if (!g.md.directory.empty() && !side.points.empty() &&
+                !std::filesystem::exists(std::filesystem::u8path(geo::geo_path(g.md.directory)))) {
+                side.dataset_dir.clear();
+                geo::save_geo(geo::geo_path(g.md.directory), side, err);
+            }
+        }
+    }
     // Without a dataset the model carries its offset and system in a sidecar,
     // written when a placed model is saved.
     g.path = g.md.directory.empty() ? _e._doc->source_path() + ".geo.json" : geo::geo_path(g.md.directory);
     g.vec_path = geo::vectors_path(g.md.directory, _e._doc->source_path());
-    std::string err;
     if (std::filesystem::exists(std::filesystem::u8path(g.path)) && !geo::load_geo(g.path, g.gp, err)) {
         g.status = spirula::i18n::format(gmsg::import_failed, {g.path, err});
         g.status_err = true;
@@ -177,14 +193,14 @@ bool SurveySession::geo_model_point(const std::string& name, double out[3]) cons
         return true;
     }
     const geo::GeoPoint* p = g.gp.find(name);
-    if (!p) return false;
+    if (!p || p->role == geo::Role::Measure) return false;
     if (g.sol.ok) {
         double l[3];
         geo::survey_to_local(g.sol, p->x, p->y, p->h, l);
         g.sol.model_to_local.inverse().apply(l, out);
         return true;
     }
-    if (g.gp.placed) {
+    if (g.gp.placed && !g.gp.local) {
         out[0] = p->y - g.gp.offset[0];
         out[1] = p->x - g.gp.offset[1];
         out[2] = p->h - g.gp.offset[2];
@@ -209,18 +225,20 @@ void SurveySession::geo_place() {
         _e._panel->set_level_cameras(false);
     }
     _e.place_saved(g.sol.model_to_local, gmsg::op_place, /*carry=*/true);
-    // A drawing made before the first placement is in the model's own
-    // coordinates; it goes where the model went.
-    if (!g.vec_survey && !g.features.empty()) {
-        for (auto& f : g.features) {
-            for (auto& p : f.v) {
-                double saved[3], moved[3];
-                geo_saved(p, saved);
-                g.sol.model_to_local.apply(saved, moved);
-                p = {moved[1] + g.sol.offset[1], moved[0] + g.sol.offset[0], moved[2] + g.sol.offset[2]};
-            }
+    // The drawing goes where the model went: from the model's own or a local
+    // system the first time, nowhere when the placement is only refined.
+    for (auto& f : g.features) {
+        for (auto& p : f.v) {
+            double saved[3], moved[3];
+            geo_saved(p, saved);
+            g.sol.model_to_local.apply(saved, moved);
+            p = {moved[1] + g.sol.offset[1], moved[0] + g.sol.offset[0], moved[2] + g.sol.offset[2]};
         }
     }
+    g.pts.clear();
+    g.readout_ok = false;
+    g.gp.local = false;
+    g.plan_count = -1;
     g.gp.placed = true;
     std::copy(g.sol.offset, g.sol.offset + 3, g.gp.offset);
     g.vec_survey = true;
@@ -368,6 +386,11 @@ void SurveySession::geo_file_chosen(const std::string& path) {
     switch (g.ask) {
         case GeoState::Ask::Catalog:
         case GeoState::Ask::Mooncloud: {
+            if (path.size() > 4 && (path.compare(path.size() - 4, 4, ".dxf") == 0 ||
+                                    path.compare(path.size() - 4, 4, ".DXF") == 0)) {
+                open_pickets(path);
+                break;
+            }
             const size_t marks_before = [&] {
                 size_t n = 0;
                 for (const auto& [name, m] : g.gp.marks) n += m.size();
@@ -426,6 +449,8 @@ void SurveySession::geo_file_chosen(const std::string& path) {
             break;
         }
         case GeoState::Ask::Classifier: geo_load_classifier(path); break;
+        case GeoState::Ask::Pickets: open_pickets(path); break;
+        case GeoState::Ask::Dataset: set_dataset_dir(path); break;
         case GeoState::Ask::Model: geo_export_model(path); break;
         case GeoState::Ask::Drawings: geo_export_drawings(path); break;
         case GeoState::Ask::None: break;
@@ -433,228 +458,17 @@ void SurveySession::geo_file_chosen(const std::string& path) {
     g.ask = GeoState::Ask::None;
 }
 
-void SurveySession::draw_control_panel(float full) {
-    geo_open();
-    GeoState& g = *_geo;
-
-    ui::TextDisabledWrapped(gmsg::tab_geo_help);
-    if (g.md.directory.empty()) {
-        ui::TextColoredWrapped(ImVec4(1, 0.7f, 0.3f, 1), gmsg::no_dataset);
-        return;
-    }
-    if (g.loading) {
-        ui::TextDisabled(gmsg::loading_dataset);
-        return;
-    }
-    if (!g.ds) {
-        ui::TextColoredWrapped(ImVec4(1, 0.45f, 0.4f, 1), gmsg::dataset_failed, {g.load_error});
-        return;
-    }
-    const float half = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-
-    // ---- catalog ----
-    ui::SeparatorText(gmsg::sec_catalog);
-    draw_crs(full);
-    ImGui::Spacing();
-    if (ui::Button(gmsg::import_catalog, ImVec2(half, 0))) {
-        if (g.latlon && !g.crs_ok) {
-            g.status = gmsg::latlon_need.get();
-            g.status_err = true;
-        } else {
-            g.ask = GeoState::Ask::Catalog;
-            g.dlg.open(gmsg::import_catalog.get(), FileDialog::Mode::File, {".txt", ".csv", ".xyz", ".dat"});
-        }
-    }
-    ui::help_on_hover(gmsg::import_catalog_help);
-    ImGui::SameLine();
-    if (ui::Button(gmsg::import_mooncloud, ImVec2(half, 0))) {
-        g.ask = GeoState::Ask::Mooncloud;
-        g.dlg.open(gmsg::import_mooncloud.get(), FileDialog::Mode::File, {".json"});
-    }
-    ui::help_on_hover(gmsg::import_mooncloud_help);
-    ui::Checkbox(gmsg::latlon, &g.latlon);
-    ui::help_on_hover(gmsg::latlon_help);
-
-    // ---- points ----
-    if (g.gp.points.empty()) {
-        ui::TextDisabledWrapped(gmsg::no_points);
-    } else {
-        const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
-                                      ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
-        const float rows = (float)std::min<size_t>(g.gp.points.size(), 10) + 1.4f;
-        if (ImGui::BeginTable("##geopoints", 5, flags, ImVec2(full, ImGui::GetFrameHeightWithSpacing() * rows))) {
-            ImGui::TableSetupScrollFreeze(0, 1);
-            ui::TableSetupColumn(gmsg::col_name, ImGuiTableColumnFlags_WidthStretch);
-            ui::TableSetupColumn(gmsg::col_role, ImGuiTableColumnFlags_WidthFixed, px(92));
-            ui::TableSetupColumn(gmsg::col_marks, ImGuiTableColumnFlags_WidthFixed, px(36));
-            ui::TableSetupColumn(gmsg::col_dplan, ImGuiTableColumnFlags_WidthFixed, px(52));
-            ui::TableSetupColumn(gmsg::col_dh, ImGuiTableColumnFlags_WidthFixed, px(52));
-            ImGui::TableHeadersRow();
-            for (int i = 0; i < (int)g.gp.points.size(); i++) {
-                auto& p = g.gp.points[(size_t)i];
-                const auto* r = result_of(g.sol, p.name);
-                ImGui::PushID(i);
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                if (ui::SelectableRaw(p.name.c_str(), g.sel == i,
-                                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
-                                          ImGuiSelectableFlags_AllowDoubleClick)) {
-                    g.sel = i;
-                    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                        _tab = Tab::Photos;
-                _tab_forced = true;
-                        g.point = p.name;
-                        g.cam = -1;
-                    }
-                }
-                ImGui::TableNextColumn();
-                int role = (int)p.role;
-                ImGui::SetNextItemWidth(-1);
-                if (ui::ComboRaw("##role", &role, {&gmsg::role_control, &gmsg::role_check, &gmsg::role_off})) {
-                    p.role = (geo::Role)role;
-                    g.stale = true;
-                    geo_save();
-                }
-                ui::help_on_hover(gmsg::role_help);
-                ImGui::TableNextColumn();
-                ui::TextRaw(std::to_string(g.gp.mark_count(p.name)));
-                ImGui::TableNextColumn();
-                if (r && r->fitted) {
-                    const double plan = std::hypot(r->dx, r->dy);
-                    const bool bad = plan > 0.05 && p.role != geo::Role::Off;
-                    const std::string s = fixed(plan, 3);
-                    if (bad) ui::TextColoredRaw(ImVec4(1, 0.55f, 0.4f, 1), s);
-                    else ui::TextRaw(s);
-                    ImGui::TableNextColumn();
-                    if (p.has_h) ui::TextRaw(fixed(r->dh, 3));
-                } else {
-                    ImGui::TableNextColumn();
-                }
-                ImGui::PopID();
-            }
-            ImGui::EndTable();
-        }
-
-        if (g.sel >= (int)g.gp.points.size()) g.sel = -1;
-        if (g.sel >= 0) {
-            const auto p = g.gp.points[(size_t)g.sel];
-            char line[160];
-            if (p.has_h) std::snprintf(line, sizeof line, "X %.3f  Y %.3f  H %.3f", p.x, p.y, p.h);
-            else std::snprintf(line, sizeof line, "X %.3f  Y %.3f", p.x, p.y);
-            ui::TextRaw(line);
-            if (g.crs_ok) {
-                double lat, lon;
-                geo::crs_to_wgs84(g.crs, p.x, p.y, lat, lon);
-                ui::TextDisabled(gmsg::point_latlon, {fixed(lat, 7), fixed(lon, 7)});
-            }
-            if (const auto* r = result_of(g.sol, p.name); r && r->triangulated && !r->worst_image.empty())
-                ui::TextDisabled(gmsg::worst_mark, {fixed(r->reproj_max, 1), r->worst_image});
-            if (ui::Button(gmsg::mark_photos, ImVec2(half, 0))) {
-                _tab = Tab::Photos;
-                _tab_forced = true;
-                g.point = p.name;
-                g.cam = -1;
-            }
-            ImGui::SameLine();
-            if (ui::Button(gmsg::delete_point, ImVec2(half, 0))) {
-                g.gp.remove_point(p.name);
-                if (g.point == p.name) g.point.clear();
-                g.sel = -1;
-                g.stale = true;
-                geo_save();
-            }
-        }
-    }
-
-    // ---- placement ----
-    ui::SeparatorText(gmsg::sec_place);
-    if (ui::Button(gmsg::place, ImVec2(full, 0))) geo_place();
-    ui::help_on_hover(gmsg::place_help);
-    if (g.sol.ok) {
-        ui::Text(gmsg::placed_control, {fixed(g.sol.rms_plan_control, 3), fixed(g.sol.rms_h_control, 3),
-                                        (long long)g.sol.n_control});
-        if (g.sol.n_check)
-            ui::Text(gmsg::placed_check, {fixed(g.sol.rms_plan_check, 3), fixed(g.sol.rms_h_check, 3),
-                                          (long long)g.sol.n_check});
-    }
-    if (g.gp.placed)
-        ui::TextDisabledWrapped(gmsg::offset_note, {fixed(g.gp.offset[0], 0), fixed(g.gp.offset[1], 0),
-                                                    fixed(g.gp.offset[2], 0)});
-    ImGui::BeginDisabled(!g.sol.ok);
-    if (ui::Button(gmsg::export_points, ImVec2(full, 0))) {
-        g.ask = GeoState::Ask::Export;
-        g.dlg.open(gmsg::export_points.get(), FileDialog::Mode::Save, {".csv"}, g.md.directory, false,
-                   "points.csv");
-    }
-    ImGui::EndDisabled();
-    if (!g.status.empty()) {
-        if (g.status_err) ui::TextColoredWrappedRaw(ImVec4(1, 0.45f, 0.4f, 1), g.status);
-        else ui::TextWrappedRaw(g.status);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Marking on the photos
-// ---------------------------------------------------------------------------
-
-// The Photos tab's side: which point is being marked, and how far along.
-void SurveySession::draw_marks_panel(float full) {
-    geo_open();
-    if (!_geo) return;
-    GeoState& g = *_geo;
-    ui::TextDisabledWrapped(gmsg::marks_help);
-    if (g.gp.points.empty()) {
-        ui::TextDisabledWrapped(gmsg::no_points);
-        return;
-    }
-    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
-    if (ImGui::BeginTable("##geomarkpoints", 3, flags, ImVec2(full, ImGui::GetContentRegionAvail().y - px(4)))) {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ui::TableSetupColumn(gmsg::col_name, ImGuiTableColumnFlags_WidthStretch);
-        ui::TableSetupColumn(gmsg::col_marks, ImGuiTableColumnFlags_WidthFixed, px(40));
-        ui::TableSetupColumn(gmsg::col_dplan, ImGuiTableColumnFlags_WidthFixed, px(60));
-        ImGui::TableHeadersRow();
-        for (int i = 0; i < (int)g.gp.points.size(); i++) {
-            const auto& p = g.gp.points[(size_t)i];
-            ImGui::PushID(i);
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            if (ui::SelectableRaw(p.name.c_str(), g.point == p.name, ImGuiSelectableFlags_SpanAllColumns)) {
-                g.point = p.name;
-                g.cam = -1;
-            }
-            ImGui::TableNextColumn();
-            ui::TextRaw(std::to_string(g.gp.mark_count(p.name)));
-            ImGui::TableNextColumn();
-            if (const auto* r = result_of(g.sol, p.name); r && r->fitted) ui::TextRaw(fixed(std::hypot(r->dx, r->dy), 3));
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-    }
-}
-
 void SurveySession::draw_photo_page() {
     geo_open();
     if (!_geo) return;
     GeoState& g = *_geo;
-    if (g.md.directory.empty()) {
-        ui::TextColoredWrapped(ImVec4(1, 0.7f, 0.3f, 1), gmsg::no_dataset);
-        return;
-    }
-    if (g.loading || !g.ds) {
-        if (g.loading) ui::TextDisabled(gmsg::loading_dataset);
-        else ui::TextColoredWrapped(ImVec4(1, 0.45f, 0.4f, 1), gmsg::dataset_failed, {g.load_error});
-        return;
-    }
+    if (!draw_dataset_state()) return;
     const ParsedDataset& ds = *g.ds;
     if (!g.gp.find(g.point)) {
-        if (g.gp.points.empty()) {
-            ui::TextDisabledWrapped(gmsg::no_points);
-            return;
-        }
-        g.point = g.gp.points.front().name;
+        g.point = g.gp.points.empty() ? std::string() : g.gp.points.front().name;
         g.cam = -1;
     }
+    const bool has_point = !g.point.empty();
 
     // A picture that finished loading goes up; the next one is asked for.
     if (!g.pic_busy && g.pic_worker.joinable()) {
@@ -709,13 +523,69 @@ void SurveySession::draw_photo_page() {
     std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.kind < b.kind; });
     if (g.cam < 0 && !rows.empty()) g.cam = rows.front().cam;
 
-    ui::Text(gmsg::win_marks, {g.point});
     int at = -1;
     for (int i = 0; i < (int)rows.size(); i++)
         if (rows[(size_t)i].cam == g.cam) at = i;
+    const float foot = -ImGui::GetFrameHeightWithSpacing() * 1.3f;
 
-    ImGui::BeginChild("##geophotos", ImVec2(px(250), -ImGui::GetFrameHeightWithSpacing() * 2.2f),
-                      ImGuiChildFlags_Borders);
+    // Left: the points, and under them the photos of the chosen one.
+    ImGui::BeginChild("##geoleft", ImVec2(px(400), foot));
+    if (ui::Button(gmsg::pt_new)) {
+        std::string name = "T1";
+        for (int n = 1; g.gp.find(name); n++) name = "T" + std::to_string(n + 1);
+        geo::GeoPoint np;
+        np.name = name;
+        np.role = geo::Role::Measure;
+        np.has_h = false;
+        g.gp.points.push_back(np);
+        g.point = name;
+        g.cam = -1;
+        geo_save();
+    }
+    ui::help_on_hover(gmsg::pt_new_help);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!has_point);
+    if (ui::Button(gmsg::delete_point)) {
+        g.gp.remove_point(g.point);
+        g.point.clear();
+        g.stale = true;
+        geo_save();
+    }
+    ImGui::EndDisabled();
+    const float half_h = (ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 2) * 0.5f;
+    const ImGuiTableFlags tf = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit |
+                               ImGuiTableFlags_BordersOuter;
+    if (ImGui::BeginTable("##geomarkpoints", 4, tf, ImVec2(0, std::max(px(80), half_h)))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ui::TableSetupColumn(gmsg::col_name, ImGuiTableColumnFlags_WidthStretch);
+        ui::TableSetupColumn(gmsg::col_role, ImGuiTableColumnFlags_WidthFixed, px(96));
+        ui::TableSetupColumn(gmsg::col_marks, ImGuiTableColumnFlags_WidthFixed, px(40));
+        ui::TableSetupColumn(gmsg::col_dplan, ImGuiTableColumnFlags_WidthFixed, px(60));
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < (int)g.gp.points.size(); i++) {
+            const auto& pt = g.gp.points[(size_t)i];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (ui::SelectableRaw(pt.name.c_str(), g.point == pt.name, ImGuiSelectableFlags_SpanAllColumns)) {
+                g.point = pt.name;
+                g.cam = -1;
+            }
+            ImGui::TableNextColumn();
+            ui::Text(role_msg(pt.role));
+            ImGui::TableNextColumn();
+            ui::TextRaw(std::to_string(g.gp.mark_count(pt.name)));
+            ImGui::TableNextColumn();
+            if (const auto* r = result_of(g.sol, pt.name); r && r->fitted && pt.role != geo::Role::Measure)
+                ui::TextRaw(fixed(std::hypot(r->dx, r->dy), 3));
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (has_point) ui::Text(gmsg::win_marks, {g.point});
+    else ui::TextDisabled(gmsg::pt_none);
+    ui::Checkbox(gmsg::only_visible, &g.only_visible);
+    ImGui::BeginChild("##geophotos", ImVec2(0, 0), ImGuiChildFlags_Borders);
     for (int i = 0; i < (int)rows.size(); i++) {
         const Row& r = rows[(size_t)i];
         ImGui::PushID(r.cam);
@@ -729,9 +599,10 @@ void SurveySession::draw_photo_page() {
         ImGui::PopID();
     }
     ImGui::EndChild();
+    ImGui::EndChild();
     ImGui::SameLine();
 
-    const ImVec2 avail(ImGui::GetContentRegionAvail().x, -ImGui::GetFrameHeightWithSpacing() * 2.2f);
+    const ImVec2 avail(ImGui::GetContentRegionAvail().x, foot);
     ImGui::BeginChild("##geocanvas", avail, ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2 c0 = ImGui::GetCursorScreenPos();
@@ -777,6 +648,14 @@ void SurveySession::draw_photo_page() {
         };
         dl->PushClipRect(c0, ImVec2(c0.x + size.x, c0.y + size.y), true);
         dl->AddImage(g.tex.id(), screen(0, 0), screen(fw, fh));
+        for (const auto& [other, by_img] : g.gp.marks) {
+            if (other == g.point) continue;
+            if (auto m = by_img.find(img); m != by_img.end()) {
+                const ImVec2 p = screen(m->second.u, m->second.v);
+                dl->AddCircle(p, px(5), IM_COL32(255, 255, 255, 200), 0, px(1.5f));
+                outlined_text(dl, ImVec2(p.x + px(7), p.y - px(18)), IM_COL32(255, 255, 255, 220), other);
+            }
+        }
         if (row && row->kind == 1) {
             const ImVec2 p = screen(row->u, row->v);
             dl->AddCircle(p, px(14), IM_COL32(90, 220, 255, 230), 0, px(1.5f));
@@ -806,14 +685,14 @@ void SurveySession::draw_photo_page() {
             const ImVec2 p = mark ? screen(mark->u, mark->v) : ImVec2(-1e9f, -1e9f);
             g.mark_drag = mark && std::hypot(io.MousePos.x - p.x, io.MousePos.y - p.y) < px(12);
         }
-        if (g.mark_drag && ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && mark &&
+        if (has_point && g.mark_drag && ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && mark &&
             mu >= 0 && mv >= 0 && mu < fw && mv < fh) {
             g.gp.marks[g.point][img] = {mu, mv};
             g.stale = true;
         }
         if (ImGui::IsItemDeactivated() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
             const bool click = io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < px(4) * px(4);
-            if ((click || g.mark_drag) && mu >= 0 && mv >= 0 && mu < fw && mv < fh) {
+            if (has_point && (click || g.mark_drag) && mu >= 0 && mv >= 0 && mu < fw && mv < fh) {
                 g.gp.marks[g.point][img] = {mu, mv};
                 g.stale = true;
                 geo_save();
@@ -834,7 +713,9 @@ void SurveySession::draw_photo_page() {
             fg->AddLine(ImVec2(c.x - px(10), c.y), ImVec2(c.x + px(10), c.y), IM_COL32(255, 60, 60, 255), px(1));
             fg->AddLine(ImVec2(c.x, c.y - px(10)), ImVec2(c.x, c.y + px(10)), IM_COL32(255, 60, 60, 255), px(1));
         }
-        if (mark && ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+        const bool right_click = ImGui::IsItemDeactivated() && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+                                 io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] < px(4) * px(4);
+        if (mark && (right_click || (ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete)))) {
             g.gp.marks[g.point].erase(img);
             if (g.gp.marks[g.point].empty()) g.gp.marks.erase(g.point);
             g.stale = true;
@@ -845,19 +726,18 @@ void SurveySession::draw_photo_page() {
     }
     ImGui::EndChild();
 
+    const bool typing = ImGui::GetIO().WantTextInput;
+    const bool space = !typing && ImGui::IsKeyPressed(ImGuiKey_Space);
+    const bool back = space && ImGui::GetIO().KeyShift;
     const float w = px(120);
     ImGui::BeginDisabled(at <= 0);
-    if (ui::Button(gmsg::prev_photo, ImVec2(w, 0)) || (at > 0 && ImGui::IsKeyPressed(ImGuiKey_PageUp)))
-        g.cam = rows[(size_t)at - 1].cam;
+    if (ui::Button(gmsg::prev_photo, ImVec2(w, 0)) || (at > 0 && back)) g.cam = rows[(size_t)at - 1].cam;
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(at < 0 || at + 1 >= (int)rows.size());
-    if (ui::Button(gmsg::next_photo, ImVec2(w, 0)) ||
-        (at >= 0 && at + 1 < (int)rows.size() && ImGui::IsKeyPressed(ImGuiKey_PageDown)))
+    if (ui::Button(gmsg::next_photo, ImVec2(w, 0)) || (at >= 0 && at + 1 < (int)rows.size() && space && !back))
         g.cam = rows[(size_t)at + 1].cam;
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    ui::Checkbox(gmsg::only_visible, &g.only_visible);
     ImGui::SameLine();
     ui::TextDisabled(gmsg::marks_help);
 }

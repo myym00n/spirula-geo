@@ -83,6 +83,18 @@ bool write_xyz(const std::string& path, const PointsOut& p, std::string& error);
 // Adds `offset` to every "v" line of an OBJ, in place.
 bool obj_add_offset(const std::string& path, const double offset[3], std::string& error);
 
+// Text of unknown encoding as UTF-8: valid UTF-8 stays, other bytes are cp1251.
+std::string utf8_guess(const std::string& s);
+
+// A picket of a DXF sketch: a POINT with the labels beside it, or a block
+// with attributes. x north (DXF Y), y east (DXF X).
+struct Picket {
+    std::string name, code, layer;
+    double x = 0, y = 0, h = 0;
+    bool has_h = false;
+};
+bool read_dxf_pickets(const std::string& path, std::vector<Picket>& out, std::string& error);
+
 // Plan length, 3D length, plan area of a closed ring (shoelace), on x north /
 // y east / h triples.
 double plan_length(const std::vector<std::array<double, 3>>& v, bool closed);

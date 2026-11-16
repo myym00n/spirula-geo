@@ -44,7 +44,13 @@ bool SurveySession::ready() const { return _attached && _geo && _e.active(); }
 void SurveySession::set_tab(Tab t) {
     if (_geo) _geo->pts.clear();
     _tab = t;
+    // The plan has no use for the 3D-only tools.
+    if (t == Tab::Plan && _tool != Tool::View && _tool != Tool::Measure && _tool != Tool::Point &&
+        _tool != Tool::Move && _tool != Tool::Contour)
+        set_tool(Tool::View);
 }
+
+void SurveySession::begin_frame() { _frame = ImGui::GetFrameCount(); }
 
 void SurveySession::set_tool(Tool t) {
     if (!_geo) return;
@@ -66,6 +72,11 @@ void SurveySession::poll() {
         return;
     }
     if (!_attached || _doc_seen != _e._doc.get()) attach();
+    if (_reopen) {
+        _reopen = false;
+        geo_close();
+        geo_open();
+    }
     if (!_geo) return;
     GeoState& g = *_geo;
     if (!g.loading && g.loader.joinable()) {
@@ -128,6 +139,9 @@ void SurveySession::draw_tool_row() {
     };
     bool first = true;
     for (const Item& it : items) {
+        const bool flat = it.tool == Tool::View || it.tool == Tool::Measure || it.tool == Tool::Point ||
+                          it.tool == Tool::Move || it.tool == Tool::Contour;
+        if (_tab == Tab::Plan && !flat) continue;
         if (!first) ImGui::SameLine();
         first = false;
         const bool on = _tool == it.tool;
@@ -150,6 +164,7 @@ void SurveySession::draw_model_panel(float full) {
                 std::snprintf(line, sizeof line, "X %.3f\nY %.3f\nH %.3f", g.readout[0], g.readout[1], g.readout[2]);
                 ui::TextRaw(line);
             }
+            draw_local_system(full);
             break;
         case Tool::Measure: draw_measure_panel(full); break;
         case Tool::Point:
@@ -175,32 +190,41 @@ void SurveySession::draw_model_panel(float full) {
 }
 
 void SurveySession::draw_side_panel(float full) {
-    _frame = ImGui::GetFrameCount();
     if (!ready()) return;
-    if (_tool != Tool::Select && _tool != Tool::Clean) geo_keys();
-    switch (_tab) {
-        case Tab::Control: draw_control_panel(full); break;
-        case Tab::Photos: draw_marks_panel(full); break;
-        case Tab::Plan:
-            if (_tool == Tool::Select || _tool == Tool::Clean || _tool == Tool::Move || _tool == Tool::Measure)
-                draw_model_panel(full);
-            else draw_plan_panel(full);
-            break;
-        case Tab::Model: draw_model_panel(full); break;
-        case Tab::Basemap: ui::TextDisabledWrapped(gmsg::soon); break;
-        case Tab::Report: draw_report_panel(full); break;
+    GeoState& g = *_geo;
+    const bool spirula_tool = _tool == Tool::Select || _tool == Tool::Clean;
+    if (!spirula_tool) geo_keys();
+    if (!g.gp.placed) ui::TextColoredWrapped(ImVec4(1, 0.7f, 0.3f, 1), gmsg::not_placed);
+    draw_model_panel(full);
+    if (spirula_tool) return;
+    ImGui::Separator();
+    draw_feature_list(full);
+    ImGui::Spacing();
+    if (ui::Button(gmsg::save_model, ImVec2(full, 0))) {
+        // Spirula's save asks before it overwrites; its panel draws that.
+        set_tool(Tool::Select);
+        _e._ask_overwrite = true;
     }
-    if (_tool != Tool::Select && _tool != Tool::Clean) {
-        ImGui::Spacing();
-        if (ui::Button(gmsg::save_model, ImVec2(full, 0))) {
-            // Spirula's save asks before it overwrites; its panel draws that.
-            set_tool(Tool::Select);
-            _tab = Tab::Model;
-            _tab_forced = true;
-            _e._ask_overwrite = true;
+    ui::help_on_hover(gmsg::save_model_help);
+    draw_status(full);
+}
+
+void SurveySession::draw_page() {
+    if (!ready()) return;
+    switch (_tab) {
+        case Tab::Control: draw_control_page(); break;
+        case Tab::Photos: draw_photo_page(); break;
+        case Tab::Plan: draw_plan_page(); break;
+        case Tab::Basemap: ui::TextDisabledWrapped(gmsg::soon); break;
+        case Tab::Report: {
+            ImGui::BeginChild("##reportpage", ImVec2(px(460), 0));
+            const float full = ImGui::GetContentRegionAvail().x;
+            draw_report_panel(full);
+            draw_status(full);
+            ImGui::EndChild();
+            break;
         }
-        ui::help_on_hover(gmsg::save_model_help);
-        draw_status(full);
+        case Tab::Model: break;
     }
 }
 

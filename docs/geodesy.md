@@ -60,19 +60,34 @@ The "Survey" menu opens a model on its own screen: the same 3D view as the
 viewer, with mooncloud's pages and tools around it. Spirula's own screens and
 editor are unchanged (docs/fork.md).
 
-- 1. Control points: the catalog, the coordinate system, placement and
-  residuals.
-- 2. Points on photos: the photo with its marks; click to mark, drag a mark
-  to move it, a loupe under the pointer, Del removes the mark.
-- 3. Plan, measurements, contours: the classifier, the drawn features.
-- 4. 3D model: the tools -- View (a click reads coordinates), Measure, Point,
-  Move, Contour, and Spirula's own Select and Clean with its panel and save.
-  Trunk and Surface are still to come.
+- 1. Control points: a full-width table, edited in place. Points come from a
+  text/CSV catalog, the clipboard, a DXF sketch (POINT entities with the
+  labels beside them, or blocks with attributes; a list to tick from) or a
+  mooncloud project. Beside it: the coordinate system, placement, residuals.
+- 2. Points on photos: the points, the photos of the chosen one, and the
+  photo. Click to mark, drag a mark to move it, right click or Del removes
+  it, Space goes to the next photo. "+ New" makes a point with no catalog
+  coordinates (role `measure`): marked on two photos, it is computed.
+- 3. Plan, measurements, contours: a top view (x north up) of a sample of
+  the model, the points and the drawing, with the View, Measure, Point,
+  Move and Contour tools. Clicks snap to points and vertices; elsewhere the
+  height is the nearest cloud point's.
+- 4. 3D model: the same tools over the 3D view, plus Spirula's own Select
+  and Clean with its panel and save. Trunk and Surface are still to come.
 - Basemap: still to come.
 - 5. Report and export: the model as LAS, PLY (double) or text points, or a
   mesh as OBJ, in full coordinates; the drawing as DXF (R12, layers from the
   classifier), CSV, GeoJSON or KML. A `.prj` is written beside when a system
   is chosen.
+
+Without control points everything still works in the model's own
+coordinates. A local system is one click away: read a point with View on the
+3D model tab, type the coordinates it should have, and the offset is set so
+(`"local": true` in geo.json); the drawing follows, the model does not move.
+A later placement by control points replaces it and carries the drawing.
+
+When the cameras and photos are not found beside the model, "Choose the
+project folder" points at them; the choice is kept in `<model>.geo.json`.
 
 Points under the pointer come from the view's own depth pick, so the cursor
 follows the surface that is drawn. A drawn vertex within ten pixels wins over

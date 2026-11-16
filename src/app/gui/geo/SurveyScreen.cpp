@@ -87,32 +87,37 @@ void GuiApp::draw_survey() {
     // The tools work through the editor; it opens on the first model.
     if (_compare.editing() < 0 && !_compare.edit_busy()) _compare.begin_edit(0);
 
+    s.begin_frame();
     s.poll();
     s.draw_tab_bar();
     s.draw_tool_row();
 
     ImGui::BeginChild("##survey", ImVec2(0, body_height(log_h)));
-    const float avail = ImGui::GetContentRegionAvail().x;
-    const float h = ImGui::GetContentRegionAvail().y;
-    const float gap = px(8.0f);
-    float w = std::clamp(_edit_panel_w * ui_scale() * 1.15f, px(260.0f), std::max(px(260.0f), avail * 0.6f));
-    float left = std::max(px(120.0f), avail - w - gap);
-    ImGui::BeginChild("##surveyview", ImVec2(left, 0));
-    if (!_survey->ready()) ui::TextDisabled(gmsg::loading_model);
-    if (s.shows_photo()) s.draw_photo_page();
-    else _compare.draw(0.0f);
-    ImGui::EndChild();
-    ImGui::SameLine();
-    // The panel is on the right: the splitter moves the view's edge.
-    if (splitter_v("##surveysplit", &left, avail * 0.4f, avail - px(260.0f) - gap, h)) {
-        w = avail - left - gap;
-        _edit_panel_w = w / ui_scale() / 1.15f;
-        _layout_dirty = true;
+    if (!s.ready()) {
+        ui::TextDisabled(gmsg::loading_model);
+    } else if (!s.wants_3d()) {
+        s.draw_page();
+    } else {
+        const float avail = ImGui::GetContentRegionAvail().x;
+        const float h = ImGui::GetContentRegionAvail().y;
+        const float gap = px(8.0f);
+        float w = std::clamp(_edit_panel_w * ui_scale() * 1.15f, px(300.0f), std::max(px(300.0f), avail * 0.6f));
+        float left = std::max(px(120.0f), avail - w - gap);
+        ImGui::BeginChild("##surveyview", ImVec2(left, 0));
+        _compare.draw(0.0f);
+        ImGui::EndChild();
+        ImGui::SameLine();
+        // The panel is on the right: the splitter moves the view's edge.
+        if (splitter_v("##surveysplit", &left, avail * 0.4f, avail - px(300.0f) - gap, h)) {
+            w = avail - left - gap;
+            _edit_panel_w = w / ui_scale() / 1.15f;
+            _layout_dirty = true;
+        }
+        ImGui::SameLine();
+        ImGui::BeginChild("##surveyside", ImVec2(0, 0), ImGuiChildFlags_Borders);
+        s.draw_side_panel(ImGui::GetContentRegionAvail().x);
+        ImGui::EndChild();
     }
-    ImGui::SameLine();
-    ImGui::BeginChild("##surveyside", ImVec2(0, 0), ImGuiChildFlags_Borders);
-    s.draw_side_panel(ImGui::GetContentRegionAvail().x);
-    ImGui::EndChild();
     ImGui::EndChild();
     s.draw_modals();
     draw_log_panel(log_h);

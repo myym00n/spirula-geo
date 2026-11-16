@@ -11,6 +11,7 @@
 #include "data/GeoSolve.h"
 #include "data/GeoVectors.h"
 #include "data/MarkerScan.h"
+#include "i18n/catalog/Geo.h"
 
 #include "imgui.h"
 
@@ -31,6 +32,7 @@ struct GeoState {
     std::thread loader;
     std::atomic<bool> loading{false};
     std::string load_error;
+    std::string dataset_by_hand;                // the folder the user pointed at
 
     spirula::geo::GeoProject gp;
     std::string path;                           // geo.json, or the model's sidecar
@@ -49,7 +51,7 @@ struct GeoState {
     bool add_open = false, latlon = false;
 
     FileDialog dlg;
-    enum class Ask { None, Catalog, Mooncloud, Export, Prj, Classifier, Model, Drawings } ask = Ask::None;
+    enum class Ask { None, Catalog, Mooncloud, Export, Prj, Classifier, Model, Drawings, Pickets, Dataset } ask = Ask::None;
 
     std::string point;
     int cam = -1;
@@ -98,6 +100,27 @@ struct GeoState {
     bool move_dirty = false, move_ask = false;
     int move_next_feat = -1, move_next_vtx = -1;
 
+    // Pickets read from a DXF, waiting to be chosen.
+    std::vector<spirula::geo::Picket> pickets;
+    std::vector<uint8_t> picket_on;
+    bool pickets_open = false, pickets_swap = false, pickets_h_only = false;
+    int pickets_role = 0;
+    std::string pickets_filter;
+
+    // The plan: a top view, x north up. Cloud points are a sample, cached.
+    float plan_scale = 0;                       // pixels per metre; 0 = fit
+    double plan_centre[2] = {0, 0};             // x north, y east
+    bool plan_cloud = true;
+    std::vector<float> plan_xyh;
+    std::vector<uint32_t> plan_rgb;
+    spirula::Sim3 plan_for;
+    double plan_off[3] = {0, 0, 0};
+    const void* plan_doc = nullptr;
+    int64_t plan_count = -1;
+
+    // Local system: the coordinates the last read point is to get.
+    double local_xyh[3] = {0, 0, 0};
+
     int model_fmt = 0, vec_fmt = 0;
     bool with_control = true;
     spirula::geo::DxfOptions dxf;
@@ -112,5 +135,15 @@ struct GeoState {
         if (export_worker.joinable()) export_worker.join();
     }
 };
+
+inline const spirula::i18n::Msg& role_msg(spirula::geo::Role r) {
+    namespace m = spirula::i18n::msg::geo;
+    switch (r) {
+        case spirula::geo::Role::Check: return m::role_check;
+        case spirula::geo::Role::Off: return m::role_off;
+        case spirula::geo::Role::Measure: return m::role_measure;
+        default: return m::role_control;
+    }
+}
 
 }  // namespace gui

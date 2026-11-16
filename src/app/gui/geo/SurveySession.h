@@ -40,14 +40,15 @@ public:
     void set_tab(Tab t);
     Tool tool() const { return _tool; }
     void set_tool(Tool t);
-    // The photo page replaces the 3D view on the Photos tab.
-    bool shows_photo() const { return _tab == Tab::Photos; }
+    // The 3D view is the 3D model tab's; the other tabs are pages of their own.
+    bool wants_3d() const { return _tab == Tab::Model; }
 
+    void begin_frame();
     void poll();
     void draw_tab_bar();
     void draw_tool_row();
-    void draw_side_panel(float full);
-    void draw_photo_page();
+    void draw_side_panel(float full);   // beside the 3D view
+    void draw_page();                   // every other tab, full width
     void draw_modals();
 
     // ViewportInteractor, through EditSession's overlay hook.
@@ -66,15 +67,25 @@ private:
     void geo_file_chosen(const std::string& path);
     spirula::Sim3 geo_model_from_dataset() const;
     bool geo_model_point(const std::string& name, double out[3]) const;
-    void draw_control_panel(float full);
     void draw_crs(float full);
-    void draw_marks_panel(float full);
+    void draw_photo_page();
+
+    // ---- pages (SurveyPages.cpp) ----
+    bool draw_dataset_state();
+    void set_dataset_dir(const std::string& dir);
+    void open_pickets(const std::string& path);
+    void draw_pickets_modal();
+    void draw_control_page();
+    void plan_refresh();
+    void draw_plan_page();
     void draw_control_overlay(const ViewportOverlay& v, const ViewProjection& camera);
 
     // ---- measuring, drawing, export (SurveyTools.cpp) ----
     bool picks() const;
     void ask_pick(const ViewportInput& in);
     void take_pick();
+    void tool_click(const std::array<double, 3>& xyh);
+    void move_take(int feat, int vtx);
     std::array<double, 3> geo_survey(const double saved[3]) const;
     void geo_saved(const std::array<double, 3>& xyh, double saved[3]) const;
     bool vertex_at(float x, float y, int& feat, int& vtx, double xyh[3]);
@@ -90,7 +101,8 @@ private:
     void geo_export_drawings(const std::string& path);
     void draw_measure_panel(float full);
     void draw_code_picker(float full);
-    void draw_plan_panel(float full);
+    void draw_feature_list(float full);
+    void draw_local_system(float full);
     void draw_move_panel(float full);
     void draw_report_panel(float full);
     void draw_status(float full);
@@ -105,6 +117,7 @@ private:
     bool _attached = false;
     bool _tab_forced = false;            // set by code: select that tab once
     bool _was_saving = false;
+    bool _reopen = false;
     int _frame = -10;                   // last frame the screen drew; inert when stale
 };
 

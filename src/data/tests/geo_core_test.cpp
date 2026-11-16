@@ -120,7 +120,27 @@ int main() {
               "DXF layers read back as a classifier");
     }
 
-    // ---- 4. Model points in full coordinates ----
+    // ---- 4. Pickets of a DXF sketch ----
+    {
+        const std::string dxf = (dir / "sketch.dxf").u8string();
+        std::ofstream(dxf) << "0\nSECTION\n2\nENTITIES\n"
+                              "0\nPOINT\n8\nPK\n10\n2216449.10\n20\n530441.76\n30\n0.0\n"
+                              "0\nTEXT\n8\nPK\n10\n2216449.40\n20\n530442.00\n40\n0.5\n1\npt5(pole)\n"
+                              "0\nTEXT\n8\nPK\n10\n2216449.40\n20\n530441.20\n40\n0.5\n1\n101,25\n"
+                              "0\nPOINT\n8\nPK\n10\n2216500.00\n20\n530500.00\n30\n99.5\n"
+                              "0\nENDSEC\n0\nEOF\n";
+        std::vector<Picket> pk;
+        check(read_dxf_pickets(dxf, pk, err) && pk.size() == 2, "DXF pickets: two points");
+        if (pk.size() == 2) {
+            check(pk[0].name == "pt5" && pk[0].code == "pole" && pk[0].has_h && std::fabs(pk[0].h - 101.25) < 1e-9,
+                  "DXF pickets: name, code and height from the labels");
+            check(std::fabs(pk[0].x - 530441.76) < 1e-6 && std::fabs(pk[0].y - 2216449.10) < 1e-6,
+                  "DXF pickets: x is north, y is east");
+            check(pk[1].name.empty() && pk[1].has_h && pk[1].h == 99.5, "DXF pickets: height from the point");
+        }
+    }
+
+    // ---- 5. Model points in full coordinates ----
     {
         const float xyz[] = {1.234f, 2.345f, 3.456f};
         PointsOut p;
