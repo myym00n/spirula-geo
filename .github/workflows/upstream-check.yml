@@ -1,0 +1,49 @@
+name: Upstream check
+
+# Once a week, and on demand: merge the newest Spirula Studio into a trial
+# branch. A clean merge is pushed to `upstream-check`, which the Windows
+# build then compiles; conflicts open an issue naming the files. Nothing
+# here touches `geo` or `master`. docs/fork.md.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write   # starts the Windows build on the trial branch
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: geo
+          fetch-depth: 0
+      - name: Merge upstream master
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "spirula-geo bot"
+          git config user.email "actions@users.noreply.github.com"
+          git remote add upstream https://github.com/harry7557558/spirula-studio.git
+          git fetch upstream master
+          base=$(git merge-base HEAD upstream/master)
+          new=$(git rev-list --count "$base..upstream/master")
+          echo "upstream commits not in geo: $new"
+          if [ "$new" = "0" ]; then exit 0; fi
+          git checkout -B upstream-check
+          if git merge --no-edit upstream/master; then
+            git push -f origin upstream-check
+            # A push made with this token starts no workflow; asking does.
+            gh workflow run geo-windows.yml --ref upstream-check
+          else
+            files=$(git diff --name-only --diff-filter=U | sed 's/^/- /')
+            git merge --abort
+            body=$(printf 'Merging %s new upstream commits into geo stops on conflicts in:\n\n%s\n\nThe hook points are listed in docs/fork.md.' "$new" "$files")
+            gh issue create --title "Upstream merge conflicts ($(date -u +%F))" --body "$body"
+            exit 1
+          fi

@@ -66,6 +66,8 @@
 
 namespace gui {
 
+class SurveySession;   // spirula-geo: docs/fork.md
+
 // One kind of saved preset as the screen sees it: what is on disk, which one
 // is in use, and what the last save or load said. `file` is "" while the
 // built-in (or stock) settings are selected.
@@ -124,7 +126,7 @@ public:
     void set_dpi_scale(float s) { _scale.set_dpi(s); }
 
 private:
-    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh };
+    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh, Survey };   // spirula-geo: Survey
     enum class PickAction {
         None, OpenDataset, SourceImages, SourceVideo, SourceDataset,
         SourceReplace, Workspace,
@@ -831,6 +833,12 @@ private:
     // object, shared by the viewer screen and the meshing preview: it owns the
     // engine while it is open, and the engine is a singleton.
     CompareView _compare;
+    // spirula-geo: the Survey screen over _compare's editor (geo/SurveyScreen.cpp).
+    // After _compare, so it is gone first.
+    std::shared_ptr<SurveySession> _survey;
+    void draw_survey();
+    void draw_survey_menu();
+    void survey_detach();
 
     // ---- meshing ----
     // The extraction runs as a child process (MeshRunner); the preview after

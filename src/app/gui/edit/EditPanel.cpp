@@ -9,7 +9,6 @@
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditAttributes.h"
 #include "i18n/catalog/EditTransform.h"
-#include "i18n/catalog/Geo.h"
 #include "i18n/catalog/Marker.h"
 #include "i18n/catalog/Render.h"
 
@@ -26,7 +25,6 @@ namespace rmsg = spirula::i18n::msg::render;
 using spirula::i18n::Msg;
 
 namespace mmsg = spirula::i18n::msg::marker;
-namespace gmsg = spirula::i18n::msg::geo;
 
 namespace gui {
 
@@ -205,22 +203,6 @@ void EditSession::handle_keys() {
             if (_plot_tool.commit_pending(s)) apply_plot_stroke(s, _plot_size[0], _plot_size[1]);
         }
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) _plot_tool.pop_point();
-        return;
-    }
-
-    // The Reference, Measure, Draw and Export tabs read Enter, Esc, Backspace
-    // and Del for their own figures; only undo, redo and save stay global.
-    if (_tab >= 2) {
-        for (const ActRow& r : kActs) {
-            if ((r.act != Act::Undo && r.act != Act::Redo) || !act_pressed(r, true)) continue;
-            if (r.act == Act::Undo) _doc->undo();
-            else _doc->redo();
-            break;
-        }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
-            _ask_overwrite = true;
-            _train_after_save = false;
-        }
         return;
     }
 
@@ -556,29 +538,8 @@ void EditSession::draw_panel() {
             draw_transform_tab(full);
             ImGui::EndTabItem();
         }
-        if (ui::BeginTabItem(gmsg::tab_geo, force && _tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            if (_tab != 2 && !force) enter_geo(2);
-            draw_geo_tab(full);
-            ImGui::EndTabItem();
-        }
-        if (ui::BeginTabItem(gmsg::tab_measure, force && _tab == 3 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            if (_tab != 3 && !force) enter_geo(3);
-            draw_measure_tab(full);
-            ImGui::EndTabItem();
-        }
-        if (ui::BeginTabItem(gmsg::tab_draw, force && _tab == 4 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            if (_tab != 4 && !force) enter_geo(4);
-            draw_draw_tab(full);
-            ImGui::EndTabItem();
-        }
-        if (ui::BeginTabItem(gmsg::tab_export, force && _tab == 5 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            if (_tab != 5 && !force) enter_geo(5);
-            draw_export_tab(full);
-            ImGui::EndTabItem();
-        }
         ImGui::EndTabBar();
     }
-    draw_geo_marks();
 
     // ---- history ----
     ui::SeparatorText(msg::sec_history);

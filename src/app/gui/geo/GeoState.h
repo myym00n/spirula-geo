@@ -51,7 +51,6 @@ struct GeoState {
     FileDialog dlg;
     enum class Ask { None, Catalog, Mooncloud, Export, Prj, Classifier, Model, Drawings } ask = Ask::None;
 
-    bool win = false;
     std::string point;
     int cam = -1;
     bool only_visible = true;
@@ -64,6 +63,7 @@ struct GeoState {
     float zoom = 1.0f;
     ImVec2 pan{0, 0};
     bool recentre = true;
+    bool mark_drag = false;
 
     // ---- drawn on the model, x north / y east / h (GeoVectors.h) ----
     std::string vec_path;
@@ -84,7 +84,19 @@ struct GeoState {
     bool hover_ok = false, snapped = false;
     double hover[3] = {0, 0, 0};
     float last_mouse[2] = {-1, -1};
-    bool pick_stale = true;
+    // The viewport's own depth pick, one in flight at a time.
+    bool pick_inflight = false;
+    float pick_xy[2] = {0, 0};
+    enum class Click { None, Act, Readout } click = Click::None;
+    float press_xy[2] = {0, 0};
+    bool readout_ok = false;
+    double readout[3] = {0, 0, 0};
+
+    // A vertex being moved: shown where it goes, kept on Done.
+    int move_feat = -1, move_vtx = -1;
+    std::array<double, 3> move_orig{};
+    bool move_dirty = false, move_ask = false;
+    int move_next_feat = -1, move_next_vtx = -1;
 
     int model_fmt = 0, vec_fmt = 0;
     bool with_control = true;

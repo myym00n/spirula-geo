@@ -2,19 +2,32 @@ name: Geo Windows build
 
 on:
   push:
-    branches: [geo]
+    branches: [geo, upstream-check]
     paths-ignore: [README.md]
   workflow_dispatch:
 
 permissions:
   contents: write   # the release below
+  issues: write     # a failed upstream trial build is reported as one
 
 concurrency:
   group: geo-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # The survey math alone, in a minute: the Windows build waits on it.
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: geo_core_test
+        run: |
+          g++ -std=c++17 -O1 -Wall -Isrc src/data/tests/geo_core_test.cpp \
+            src/data/GeoCrs.cpp src/data/GeoProject.cpp src/data/GeoVectors.cpp -o geo_core_test
+          ./geo_core_test
+
   windows:
+    needs: core-tests
     runs-on: windows-2025
     timeout-minutes: 240
     steps:
@@ -77,11 +90,23 @@ jobs:
           path: ${{ env.ASSET }}
           retention-days: 30
 
-      # A public download link that needs no GitHub sign-in.
+      # A public download link that needs no GitHub sign-in; not for the
+      # upstream trial merge.
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/geo'
         with:
           tag_name: geo-build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           name: spirula-geo build ${{ github.run_number }}
           prerelease: true
           files: ${{ env.ASSET }}
+
+      - name: Report a failed upstream trial
+        if: failure() && github.ref == 'refs/heads/upstream-check'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" \
+            --title "Upstream trial build failed ($(date -u +%F))" \
+            --body "The newest Spirula Studio merges into geo without conflicts but does not build: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. The hook points are listed in docs/fork.md."

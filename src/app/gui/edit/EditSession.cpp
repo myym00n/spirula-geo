@@ -80,7 +80,6 @@ void EditSession::open(std::unique_ptr<EditDoc> doc, ViewportPanel* panel) {
 }
 
 void EditSession::close() {
-    geo_close();
     _cancel = true;
     if (_comp_worker.joinable()) _comp_worker.join();
     if (_save_worker.joinable()) _save_worker.join();
@@ -182,6 +181,10 @@ void EditSession::set_layer(int i) {
 
 bool EditSession::on_viewport_input(const ViewportInput& in) {
     if (!_doc || busy()) return false;
+    if (_overlay_tool) {   // spirula-geo: it sees every frame, takes the button only when it owns it
+        const bool took = _overlay_tool->on_viewport_input(in);
+        if (_overlay_tool->owns_left_button()) return took;
+    }
 
     // A running operator has the pointer whatever tool started it.
     if (_xform.active()) {
@@ -213,8 +216,6 @@ bool EditSession::on_viewport_input(const ViewportInput& in) {
         }
         return true;
     }
-
-    if (_tab >= 3 && _tab <= 4 && _geo) return geo_input(in);
 
     if (_tool.id() == ToolId::Transform) {
         if (_dist_scale.active()) {
@@ -273,8 +274,6 @@ void EditSession::draw_viewport_overlay(const ViewportOverlay& v) {
     XformFrame f;
     const bool have = xform_frame(f);
     if (have && _marker_show && _tab == 1) draw_marker_overlay(v, f.cam);
-    if (have && _tab == 2) draw_geo_overlay(v, f.cam);
-    if (have && _tab >= 3) draw_vector_overlay(v, f.cam);
     if (have && v.grid && draws_world_grid()) {
         float target[3] = {0, 0, 0};
         if (_panel) _panel->nav_target(target);
@@ -302,6 +301,7 @@ void EditSession::draw_viewport_overlay(const ViewportOverlay& v) {
         _xform.draw_handles(v.dl, origin, _xform_mode, f, _xform_hot);
     }
     _tool.draw_overlay(v.dl, origin);
+    if (_overlay_tool) _overlay_tool->draw_viewport_overlay(v);   // spirula-geo
 }
 
 void EditSession::apply_stroke(const ShapeStroke& s, const ViewportInput& in) {
@@ -643,7 +643,6 @@ void EditSession::poll() {
         _cancel = false;
     }
     if (!_save_busy.load() && _save_worker.joinable()) take_save_result();
-    geo_poll();
     if (!_marker_busy.load() && _marker_worker.joinable()) take_marker_result();
     if (busy()) {
         if (_panel) _panel->invalidate();
@@ -751,7 +750,6 @@ void EditSession::take_save_result() {
     const bool to_trainer = _train_after_save;
     _train_after_save = false;
     if (_save_error.empty()) {
-        geo_after_save(_save_path);
         if (_on_saved) _on_saved(_doc->source_path(), _save_path, _save_placement);
         _doc->mark_saved();
         if (_save_path == _doc->source_path() ||

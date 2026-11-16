@@ -54,21 +54,30 @@ Lambert conformal conic (`lcc`), with a 3- or 7-parameter `towgs84` in PROJ's
 position-vector sense. No grid shifts and no geoid: heights pass through
 unchanged. Against PROJ the plan agrees to under a millimetre.
 
-## Measure, Draw, Export
+## The Survey screen
 
-The editor's tabs are Select, Transform, Reference (control points and the
-placement), Measure, Draw and Export. The last three pick points on the model
-under the pointer: a splat centre, a cloud point or a mesh vertex.
+The "Survey" menu opens a model on its own screen: the same 3D view as the
+viewer, with mooncloud's pages and tools around it. Spirula's own screens and
+editor are unchanged (docs/fork.md).
 
-- Measure: coordinates under the pointer, distance (plan, slope, height
-  difference, grade) and area (plan area, perimeter). A measure can be kept
-  as a drawing.
-- Draw: points, lines and polygons with a code. Vertices snap to existing
-  ones; Enter or a double click finishes, Backspace takes the last vertex
-  back, Esc cancels, Del removes the selected feature.
-- Export: the model as LAS, PLY (double) or text points, or a mesh as OBJ,
-  in full coordinates; the drawing as DXF (R12, layers from the classifier),
-  CSV, GeoJSON or KML. A `.prj` is written beside when a system is chosen.
+- 1. Control points: the catalog, the coordinate system, placement and
+  residuals.
+- 2. Points on photos: the photo with its marks; click to mark, drag a mark
+  to move it, a loupe under the pointer, Del removes the mark.
+- 3. Plan, measurements, contours: the classifier, the drawn features.
+- 4. 3D model: the tools -- View (a click reads coordinates), Measure, Point,
+  Move, Contour, and Spirula's own Select and Clean with its panel and save.
+  Trunk and Surface are still to come.
+- Basemap: still to come.
+- 5. Report and export: the model as LAS, PLY (double) or text points, or a
+  mesh as OBJ, in full coordinates; the drawing as DXF (R12, layers from the
+  classifier), CSV, GeoJSON or KML. A `.prj` is written beside when a system
+  is chosen.
+
+Points under the pointer come from the view's own depth pick, so the cursor
+follows the surface that is drawn. A drawn vertex within ten pixels wins over
+the surface. Moving a vertex shows it at its new place until Done (or Enter);
+picking another vertex first asks whether to keep the move.
 
 The drawing is `vectors.json` beside `geo.json` (or `<model>.vectors.json`
 without a dataset). Its vertices are survey coordinates (x north, y east, h)

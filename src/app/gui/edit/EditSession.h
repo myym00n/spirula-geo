@@ -17,10 +17,8 @@
 #include "app/gui/edit/ElementGrid.h"
 #include "app/gui/edit/SelectShape.h"
 #include "app/gui/edit/TransformTool.h"
-#include "data/GeoVectors.h"
 #include "data/MarkerScan.h"
 
-#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -31,7 +29,6 @@
 namespace gui {
 
 class ViewportPanel;
-struct GeoState;
 
 // What produced a selection. Kept on the history step it made, so a setting
 // changed at that point in the history re-runs THAT selection -- however many
@@ -48,8 +45,13 @@ struct SelectRecipe {
 };
 
 class EditSession : public ViewportInteractor {
+    friend class SurveySession;   // spirula-geo: docs/fork.md
 public:
     ~EditSession() override;
+
+    // spirula-geo: a tool layered over the editor (the Survey screen). While
+    // it owns the left button it gets the pointer; its overlay draws on top.
+    void set_overlay_tool(ViewportInteractor* t) { _overlay_tool = t; }
 
     // Takes the document over and installs itself on `panel`.
     void open(std::unique_ptr<EditDoc> doc, ViewportPanel* panel);
@@ -118,7 +120,7 @@ public:
 
     bool owns_left_button() const override {
         return _tool.owns_pointer() || _xform.active() || _pick != Pick::None ||
-               _dist_scale.active() || geo_owns_left();
+               _dist_scale.active() || (_overlay_tool && _overlay_tool->owns_left_button());
     }
     // The letter that switched tools is usually still down on the frame the
     // switch takes effect, so Q would both select Navigate and fly the camera
@@ -149,6 +151,7 @@ public:
     int work_total() const { return _save_total.load(); }
 
 private:
+    ViewportInteractor* _overlay_tool = nullptr;   // spirula-geo
     // ---- placing the model (EditTransform.cpp) ----
     enum class Pivot { Origin = 0, Median, Mean, Selection };
     enum class Pick { None = 0, Ground, Corner, Origin };
@@ -187,46 +190,6 @@ private:
                                      std::vector<int64_t>* index = nullptr) const;
     void enter_transform();
     void draw_transform_tab(float full);
-
-    // ---- the Reference tab: control points (EditGeo.cpp) ----
-    void enter_geo(int tab);
-    void geo_open();
-    void geo_close();
-    void geo_poll();
-    void geo_save();
-    void geo_solve();
-    void geo_place();
-    void geo_pick_crs(const std::string& name, const std::string& def);
-    void geo_file_chosen(const std::string& path);
-    spirula::Sim3 geo_model_from_dataset() const;
-    bool geo_model_point(const std::string& name, double out[3]) const;
-    void draw_geo_tab(float full);
-    void draw_geo_crs(float full);
-    void draw_geo_marks();
-    void draw_geo_overlay(const ViewportOverlay& v, const ViewProjection& camera);
-
-    // ---- Measure, Draw and Export tabs (EditMeasure.cpp) ----
-    bool geo_owns_left() const;
-    bool geo_input(const ViewportInput& in);
-    // Survey triples (x north, y east, h) <-> saved coordinates.
-    bool geo_pick(float x, float y, double xyh[3]);
-    std::array<double, 3> geo_survey(const double saved[3]) const;
-    void geo_saved(const std::array<double, 3>& xyh, double saved[3]) const;
-    void geo_keys();
-    void geo_finish();
-    void geo_commit(spirula::geo::FeatureKind kind, const std::vector<std::array<double, 3>>& pts);
-    void geo_save_vectors();
-    void geo_load_classifier(const std::string& path);
-    void geo_load_classifier_setting();
-    void geo_after_save(const std::string& saved);
-    void geo_export_model(const std::string& path);
-    void geo_export_drawings(const std::string& path);
-    void draw_measure_tab(float full);
-    void draw_draw_tab(float full);
-    void draw_export_tab(float full);
-    void draw_vector_overlay(const ViewportOverlay& v, const ViewProjection& camera);
-    // shared_ptr: the type is complete only in EditGeo.cpp.
-    std::shared_ptr<GeoState> _geo;
 
     // ---- selecting by attribute and by colour (EditAttributes.cpp) ----
     void draw_attribute_section(float full);
@@ -406,7 +369,7 @@ private:
     bool _adjust_live = false;
     double _preview_at = 0.0;
 
-    int _tab = 0;                     // 0 select, 1 transform, 2 reference, 3 measure, 4 draw, 5 export
+    int _tab = 0;                     // 0 select, 1 transform
     bool _tab_force = false;
     bool _saved_over_source = false;
 

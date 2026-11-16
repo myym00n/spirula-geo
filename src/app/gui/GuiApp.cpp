@@ -350,6 +350,7 @@ void GuiApp::shutdown() {
     _mesh.cancel();
     // destroy_gl while the context is still current; close() then stops the
     // render workers before the engine goes back.
+    survey_detach();   // spirula-geo
     _compare.destroy_gl();
     _compare.close();
     _mesh_preview_open = false;
@@ -3691,6 +3692,7 @@ void GuiApp::frame() {
         case Screen::Viewer: draw_viewer(); break;
         case Screen::Batch:  draw_batch();  break;
         case Screen::Mesh:   draw_mesh();   break;
+        case Screen::Survey: draw_survey(); break;   // spirula-geo
     }
     if (_roi_editor.is_open()) _roi_editor.draw();
 
@@ -3902,6 +3904,7 @@ void GuiApp::draw_menu_bar() {
         }
         ImGui::EndMenu();
     }
+    draw_survey_menu();   // spirula-geo
     draw_language_menu();
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     {

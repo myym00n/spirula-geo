@@ -289,7 +289,8 @@ if(SS_BUILD_GUI)
 
     file(GLOB SS_GUI_SOURCES CONFIGURE_DEPENDS
         ${SS_SRC}/app/gui/*.cpp ${SS_SRC}/app/gui/edit/*.cpp
-        ${SS_SRC}/app/gui/render/*.cpp ${SS_SRC}/app/gui/mask/*.cpp)
+        ${SS_SRC}/app/gui/render/*.cpp ${SS_SRC}/app/gui/mask/*.cpp
+        ${SS_SRC}/app/gui/geo/*.cpp)   # spirula-geo: docs/fork.md
     list(APPEND SS_TOOL_SOURCES ${SS_GUI_SOURCES} ${SS_SRC}/app/FfmpegVideo.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_GUI=1)
     list(APPEND SS_TOOL_LIBS imgui_glfw OpenGL::GL)
